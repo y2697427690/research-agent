@@ -1,0 +1,61 @@
+﻿Python 3.12.14
+==================================================================
+【版本实测】
+  fastapi            0.143.0
+  starlette          1.7.0
+  pydantic           2.14.1
+  uvicorn            0.54.0
+  sqlalchemy         2.1.4
+  aiosqlite          0.22.1
+  pymupdf            1.28.2
+  openai             3.29.0
+  httpx              0.28.1
+  tenacity           ?
+  orjson             3.13.0
+  arxiv              4.0.1
+  apscheduler        3.11.3
+  pytest             9.1.1
+  numpy              2.3.5
+  pandas             3.0.1
+  alembic            1.20.0
+  pydantic_settings  2.15.0
+  greenlet           3.5.6
+
+【缺失检查】
+  OK    pydantic_settings
+  OK    alembic
+  OK    greenlet
+  OK    multipart
+  OK    pytest_asyncio
+
+【FastAPI 最小可用性】
+  POST /echo        200 {'name': 'ok', 'n': 3}
+  校验失败用例       422 （应为 422）
+  上传(multipart)    200 {'name': 'a.pdf', 'size': 14, 'magic': '%PDF-'}
+  SSE 流             200 text/event-stream; charset=utf-8 'event: token\ndata: {"t":"hi"}\n\n'
+  OpenAPI 生成       OK
+
+【PyMuPDF 解析实测】
+  pymupdf 版本: 1.28.2
+  页数: 15
+  第 1 页文本长度: 2719
+  首行: 'Attention Is All You Need'
+  span 数: 219
+  首个 span: size=17.2 font=NimbusRomNo9L-Medi bbox=[211.5, 99.8, 399.9, 117.0]
+Consider using the pymupdf_layout package for a greatly improved page layout analysis.
+  find_tables(): 0 个表格
+  图片数: 0
+  中文需求 PDF: 7 页, 抽出 4301 字
+  片段: '科研小助手Agent\u200b\n1. 产品功能\u200b\n1.1 PDF文件管理和解析\n基本的CRUD操作，比如用户可以上传PDF格式的论文，包括批量上传。上传之后需要对PDF'
+
+【openai SDK 3.x 兼容性】
+  openai 3.29.0
+  AsyncOpenAI 参数: self, api_key, admin_api_key, workload_identity, organization, project, webhook_secret, provider
+  有 chat.completions.create: True
+  create() 支持的关键参数: ['model', 'messages', 'stream', 'temperature', 'response_format']
+
+【SQLAlchemy 2.x async 实测】
+  写入并读回: p-1 Attention Is All You Need
+
+==================================================================
+核实完毕
