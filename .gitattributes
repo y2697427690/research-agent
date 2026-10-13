@@ -1,0 +1,43 @@
+# 统一换行符处理方式
+# 目的：避免 Windows 与 Linux 之间出现「整个文件都被修改」的伪 diff
+
+# 默认：由 Git 自动判断文本/二进制
+* text=auto
+
+# 第三方压缩产物：禁止任何换行符转换与 diff
+*.js.map binary
+*.min.js binary
+*.min.css binary
+swagger-ui-bundle.js binary
+redoc.standalone.js binary
+
+# 图片与字体
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+
+# 确保脚本与配置文件始终用 LF（服务器上运行更安全）
+*.py text eol=lf
+*.sh  text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+
+# Windows 专用脚本保留 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Markdown 允许尾随空格（两个空格在 Markdown 里表示换行）
+*.md text eol=lf whitespace=-blank-at-eol
+
+# 锁文件不参与合并，避免冲突时手工处理
+poetry.lock binary
+requirements.lock.txt binary
+package-lock.json binary

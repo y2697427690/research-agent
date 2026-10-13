@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     llm_max_retry: int = 2
 
     # ---------- 存储 ----------
+    static_dir: Path = BACKEND_DIR / "app" / "static"
     data_dir: Path = BACKEND_DIR / "data"
     storage_dir: Path = BACKEND_DIR / "data" / "papers"
 
