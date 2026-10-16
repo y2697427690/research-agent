@@ -46,6 +46,21 @@
 - 单元测试直接暴露了 4 个肉眼难以发现的缺陷：旧版 arXiv 编号不支持下划线、
   Windows 下 basename 不识别正斜杠、元组漏解包、扫描件判定顺序错误。
   这类缺陷靠人工点击界面很难覆盖，是引入 pytest 的直接收益。
+- FastAPI 的文件上传接口依赖 python-multipart，它是 fastapi 的可选依赖，
+  只装 `fastapi` 时不会自动带上；缺失时接口在运行时报
+  `RuntimeError: Form data requires "python-multipart" to be installed`。
+  对策：写入 pyproject.toml 主依赖。教训：代码正确不等于能跑起来，依赖也是代码的一部分。
+- 测试用内存 SQLite 时必须使用 StaticPool：`sqlite:///:memory:` 是「每条连接一个
+  独立实例」，建表连接与接口连接看到的不是同一个库，表现为 `no such table`。
+  同时应在 import app.main 之前替换 db.session 的 engine，
+  让 lifespan 的建表也走测试库，从而完全不触碰真实的 data/app.db。
+- PATCH 接口必须用 `payload.model_dump(exclude_unset=True)` 取字段，
+  否则客户端只传部分字段时，未传字段会被 None 覆盖，导致已有数据被清空。
+- Windows PowerShell 5.1 不支持 `Invoke-RestMethod -Form` 与
+  `System.Net.Http.MultipartFormDataContent`（需 PowerShell 7+）。
+  做接口端到端验证时改用 Python 脚本（httpx）或 curl.exe 更可靠。
+- 中文输出在 PowerShell 5.1 控制台会显示为乱码，执行 `chcp 65001` 可正常显示；
+  这属于终端编码问题，不影响程序输出的实际内容。
 
 ## 附录 C：已知问题与后续优化
 
