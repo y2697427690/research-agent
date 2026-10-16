@@ -1,173 +1,269 @@
-# 科研小助手 Agent · 前端演示
+# 科研小助手 Agent
 
-一个面向科研文献的 AI Agent 前端：把 PDF 变成**可检索、可问答、可引用、可写作**的结构化知识。
+> 面向科研文献的 AI 智能体：把 PDF 论文变成**可检索、可问答、可引用、可写作**的结构化知识库。
 
-需求来源：`科研小助手Agent-AI大模型.pdf`（已整理为 [`docs/requirements.md`](docs/requirements.md)）
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688)](https://fastapi.tiangolo.com/)
+[![Tests](https://img.shields.io/badge/tests-82%20passed-brightgreen)]()
+[![Ruff](https://img.shields.io/badge/ruff-0%20issues-orange)]()
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
 
-## 一、怎么打开
+## 项目介绍
 
-**直接双击 `index.html`** 即可（纯静态、零依赖、零构建）。
+科研人员读论文有三个痛点：**读得慢**（一篇 15 页要精读半小时）、**跨论文难对比**（想找"谁最早提出某个方法"要翻十几篇）、**AI 回答无法溯源**（模型说得头头是道，但你不知道依据在哪一段）。
 
-如果需要用本地服务器打开：
+本项目把「论文 PDF」变成「可检索、可问答、可引用」的知识库：上传后自动结构化解析（标题、作者、三级目录、摘要、参考文献），再用混合检索找到最相关的原文片段，交给大模型组织成带出处的回答——**每一条结论都能点回原文核对**。
+
+### 核心功能
+
+| 模块 | 能力 | 状态 |
+| --- | --- | --- |
+| 文档管理 | 批量上传、**内容指纹去重**、版本识别、结构化解析 | ✅ 后端已实现 |
+| 知识问答 | 单篇/多篇 RAG 问答，回答带出处角标，**引用编号服务端校验** | ⏳ 计划中 |
+| 阅读与翻译 | 树状目录、引文双向跳转、划词翻译、中英对照 | ✅ 前端已实现（演示数据） |
+| 引用图谱 | 引用网络、核心节点挖掘、自动综述 | ✅ 前端已实现（演示数据） |
+| 发现与推荐 | arXiv 抓取、相关性推荐、用户反馈 | ✅ 前端已实现（演示数据） |
+| 写作助手 | 框架生成、References 核验、图代码、CSV 可视化 | ✅ 前端已实现（演示数据） |
+
+> **诚实说明**：前端目前运行在演示数据上（`frontend/scripts/data/mock-data.js`），后端已完成 P0~P2（骨架、上传去重、PDF 解析）。两者尚未接通，详见 [docs/architecture.md](docs/architecture.md) 附录 C。
+
+---
+
+## 技术架构
+
+```
+┌──────────────────────────────────────────────┐
+│  前端  原生 HTML / CSS / JavaScript            │
+│        零依赖、零构建，浏览器直接打开            │
+└───────────────────┬──────────────────────────┘
+                    │ HTTP / SSE
+┌───────────────────▼──────────────────────────┐
+│  FastAPI 后端                                 │
+│  ├── api/       路由层（只处理 HTTP，不写 SQL） │
+│  ├── schemas/   Pydantic 请求响应模型          │
+│  ├── services/  业务层（解析 / 去重 / 检索…）    │
+│  ├── models/    SQLAlchemy ORM                │
+│  ├── db/        异步引擎与会话                 │
+│  └── core/      配置 · 日志 · 统一错误          │
+└───────────────────┬──────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+   SQLite (WAL)           本地文件存储
+```
+
+### 技术栈
+
+| 层 | 选型 | 说明 |
+| --- | --- | --- |
+| 前端 | 原生 HTML/CSS/JS | 零依赖、零构建，无需 Node.js 即可运行 |
+| 后端 | Python 3.11+ / FastAPI / Pydantic v2 | 原生 async，支持 SSE 流式输出 |
+| 数据 | SQLAlchemy 2.0 async + SQLite(WAL) | ORM 抽象层便于将来切换 PostgreSQL |
+| PDF 解析 | PyMuPDF | 可同时获取文字、坐标、字号、表格结构 |
+| 图论分析 | NetworkX | 引用网络与中心性分析 |
+| 大模型 | OpenAI 兼容 API | DeepSeek / OpenAI / 本地 Ollama 均可切换 |
+| 代码规范 | Ruff | 规则集 E/W/F/I/N/UP/B/SIM |
+| 测试 | pytest + pytest-asyncio | 82 个用例 |
+
+---
+
+## 安装运行指南
+
+### 环境要求
+
+| 组件 | 版本要求 | 说明 |
+| --- | --- | --- |
+| Python | **≥ 3.11**（实测 3.12.14 / 3.14.7） | 后端 |
+| Node.js | **不需要** | 前端零依赖，浏览器直接打开；仅跑前端自测时需要 |
+| 数据库 | SQLite（Python 内置） | 无需额外安装 |
+| 大模型 | OpenAI 兼容 API | 通过环境变量配置；未配置也可运行（走规则降级） |
+
+### 后端
 
 ```bash
-cd research-assistant
-python -m http.server 8080
-# 然后访问 http://localhost:8080
+cd backend
+
+# 1. 创建虚拟环境
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
+
+# 2. 安装依赖（含开发依赖）
+python -m pip install -e ".[dev]"
+
+# 3. 配置环境变量
+copy .env.example .env          # Windows
+# cp .env.example .env          # macOS / Linux
+# 然后编辑 .env，填入自己的 API Key
+
+# 4. 启动
+uvicorn app.main:app --reload --port 8000
 ```
 
-推荐浏览器：Chrome / Edge（使用了 CSS Grid、`backdrop-filter`、`SVG`）。
+启动后访问 **http://127.0.0.1:8000/docs** 查看接口文档（Swagger UI）。
 
----
+> **注意**：文档页的静态资源已本地化（`app/static/`），**不依赖外部 CDN**，离线环境同样可用。
 
-## 二、八个页面分别干什么
+### 前端
 
-左侧导航从上到下分四组，对应需求文档第 1 章的六组功能 + 两个辅助页。
+```bash
+# 零依赖，直接用浏览器打开
+start frontend\index.html       # Windows
+# open frontend/index.html      # macOS
+```
 
-| 页面 | 对应需求 | 这个页面解决什么问题 |
+### 环境变量
+
+所有敏感信息**只通过环境变量注入，不进仓库**。完整清单见 [`backend/.env.example`](backend/.env.example)：
+
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| **工作台** | 总览 | 文库概况（论文数 / 累计页数 / 参考文献条目 / 平均解析置信度）、解析质量一览表、六个快捷入口、需求能力地图 |
-| **文库** | 1.1 PDF 管理与解析 | 拖拽/批量上传 → 解析流水线 → **内容去重弹窗**（覆盖 / 保留文库版本 / 两份都留 + 版本差异对比）→ 论文列表（阅读 / 元数据 / 重新解析 / 删除）→ **结构化解析详情抽屉**（标题·作者·摘要·章节·表格·图表·公式·参考文献·附录 七个分区） |
-| **阅读器** | 1.3 阅读和翻译 | 左侧三级树状目录（滚动自动高亮）、中间原文排版（公式/表格/图形块）、**点引文角标跳 References 再跳回原位**、划词翻译、整篇译文模式、**中英对照双向同步滚动** |
-| **知识问答** | 1.2 知识问答 | 单篇 / 多篇切换 + 论文勾选、Top-K 可调、**回答里每个结论都带 [n] 角标**、右侧证据面板可反向定位、会话管理。内置需求文档 1.2 的 8 道例题（5 单篇 + 3 多篇）与标准答案 |
-| **引用图谱** | 1.5 论文分析与生成 | SVG 力导向引用网络（可切换按时间环布局）、节点大小=入度、**基石论文 / 边缘衍生论文挖掘**、图指标排行、**自动综述（流式输出）**、未来工作探索（带空档风险评级） |
-| **发现与推荐** | 1.4 下载和推荐 | 按名称自动下载、批量抓取参考文献（40 条→筛出 28 条）、刷新 arXiv、**每日/本周推荐流（每条带推荐理由 + 代码标记）**、👍/👎 反馈实时重排序、兴趣画像 |
-| **写作助手** | 1.6 写作助手 | ① 论文框架生成（7 章节 + **References 真实性核验**）② TikZ / Graphviz / Mermaid 绘图代码 ③ 上传 CSV → 表格 / 柱状图 / 折线图 / 雷达图 + **自动 Figure Caption（含趋势结论）** ④ 中译英 + 术语一致性表 |
-| **说明 / 对照表** | 提交与评分 | **需求条目 → 界面元素 → 源码行** 的三列对照表（8 组、60+ 条），评审可逐条验收；另有文件结构说明与「接后端要改的 6 个地方」 |
+| `APP_LLM_BASE_URL` | `https://api.deepseek.com/v1` | 大模型接口地址 |
+| `APP_LLM_API_KEY` | 空 | API Key（**绝不提交**） |
+| `APP_LLM_MODEL_CHAT` | `deepseek-chat` | 对话模型 |
+| `APP_LLM_MODEL_REASONER` | `deepseek-reasoner` | 推理模型 |
+| `APP_LOG_LEVEL` | `INFO` | 日志级别 |
+| `APP_DEBUG` | `true` | 调试模式 |
+
+环境配置的详细说明见 [`docs/setup.md`](docs/setup.md)。
 
 ---
 
-## 三、目录结构（想改哪里就打开哪个文件）
+## 团队信息
+
+| 成员 | 角色 | 负责范围 |
+| --- | --- | --- |
+| _（请填写姓名 / 昵称）_ | 全栈开发 | 前端界面、后端架构、PDF 解析、检索与问答、部署 |
+
+---
+
+## 在线演示
+
+_（部署完成后填写）_
+
+- **前端**：待填
+- **接口文档**：待填 `/docs`
+- **登录**：无需登录
+
+---
+
+## 演示视频
+
+_（录制完成后填写）_
+
+---
+
+## 测试
+
+```bash
+# 后端：单元测试 + 接口测试 + 真实 PDF 回归
+cd backend
+python -m pytest tests -q
+# 期望：82 passed
+
+# 代码规范检查
+python -m ruff check app tests
+# 期望：All checks passed!
+
+# 前端：无浏览器冒烟测试（需要 Node.js）
+node frontend/tools/smoke/run.js
+# 期望：80/80 通过，加载错误 0 个
+```
+
+### 测试覆盖
+
+| 测试文件 | 用例数 | 覆盖内容 |
+| --- | --- | --- |
+| `tests/test_dedupe.py` | 34 | arXiv ID 提取的 20 种文件名变体、名称归一化、版本比较、扫描件识别 |
+| `tests/test_paper_service.py` | 13 | 文件落盘、指纹计算、分页查询、删除策略 |
+| `tests/test_api_papers.py` | 15 | 上传/列表/详情/更新/删除接口的 HTTP 行为与错误处理 |
+| `tests/test_pdf_parser.py` | 12 | 合成 PDF 边界用例 + 官方三份真实 PDF 的回归基线 |
+
+---
+
+## 目录结构
 
 ```
-research-assistant/
-├── index.html                  入口页：按顺序加载脚本并启动 App.boot()
-├── README.md                   本文件
-├── docs/requirements.md        从 PDF 提取整理的需求原文
-├── styles/
-│   ├── theme.css               设计令牌（颜色/字号/圆角/阴影）—— 换肤只改这里
-│   ├── app.css                 应用外壳 + 公共组件（卡片/按钮/表格/弹窗/抽屉/Toast）
-│   └── views.css               各业务视图专属样式
-└── scripts/
-    ├── core/
-    │   ├── util.js             ★ html`` 模板标签 + esc() 转义 + Out 对象（安全 HTML 机制）
-    │   ├── store.js            ★ 全局状态 + 所有业务动作（接后端时主要改这里）
-    │   ├── components.js       公共组件：Toast / 确认框 / 统计卡 / 徽章 / 空状态
-    │   ├── rag.js              检索引擎：分词 → BM25 打分 → Top-K → 带出处拼装
-    │   ├── dedupe.js           去重与版本差异：指纹相似度 + 逐条 diff
-    │   ├── writer.js           写作助手算法：框架 / CSV 解析 / 图表 / 图注生成 / 翻译
-    │   └── app.js              ★ 视图注册表 + 路由 + 外壳渲染 + 事件动作表
-    ├── data/
-    │   └── mock-data.js        ★ 所有演示数据（45 篇论文 / 正文 / 知识片段 / 推荐 / 图谱）
-    └── views/
-        ├── dashboard.js        工作台
-        ├── library.js          文库（上传 / 解析 / 去重 / CRUD）
-        ├── reader.js           阅读器（目录 / 对照 / 引文跳转 / 划词翻译）
-        ├── qa.js               知识问答（单篇 / 多篇 + 证据面板）
-        ├── graph.js            引用图谱（力导向 / 核心节点 / 综述 / 未来工作）
-        ├── discover.js         发现与推荐（下载 / 刷新 / 推荐 / 反馈）
-        ├── writing.js          写作助手（框架 / 图代码 / 可视化 / 翻译）
-        └── guide.js            说明与对照表
+.
+├── frontend/                  前端（原生 HTML/CSS/JS，零依赖）
+│   ├── index.html
+│   ├── styles/                theme.css · app.css · views.css
+│   ├── scripts/
+│   │   ├── core/              工具 · 状态 · 组件 · RAG · 去重 · 写作
+│   │   ├── data/              演示数据
+│   │   └── views/             八个页面
+│   ├── tools/smoke/           无浏览器冒烟测试（80 项）
+│   └── README.md              前端专项说明
+│
+├── backend/                   后端（FastAPI）
+│   ├── app/
+│   │   ├── api/v1/            路由层
+│   │   ├── core/              配置 · 日志 · 统一错误
+│   │   ├── db/                异步引擎与会话
+│   │   ├── models/            ORM 模型
+│   │   ├── schemas/           Pydantic 模型
+│   │   ├── services/          业务层（解析 / 去重 / 论文服务）
+│   │   ├── static/            本地化的文档页资源
+│   │   └── main.py            应用入口
+│   ├── tests/                 82 个测试
+│   ├── pyproject.toml         依赖与 ruff / pytest 配置
+│   └── .env.example           环境变量模板
+│
+├── docs/                      文档
+│   ├── requirements.md        需求原文整理
+│   ├── competition-env.md     比赛环境与技术栈要求（官方条款）
+│   ├── architecture.md        技术文档主稿（含踩坑记录与已知问题）
+│   ├── backend-design.md      后端设计方案
+│   └── setup.md               环境配置说明
+│
+├── README.md
+├── CHANGELOG.md
+├── LICENSE
+├── .gitignore
+└── .gitattributes
 ```
 
 ---
 
-## 四、架构：三条约定
+## 文档索引
 
-### 1. 单向数据流
-
-```
-用户操作 → App.store.actions.xxx() 改状态 → notify() → App.render() → 视图重绘
-```
-
-视图层**只读** `App.store.state`，**只写** 通过 `App.store.actions`。
-所以接后端时只需替换 actions 内部实现，视图一行都不用改。
-
-### 2. 安全 HTML 的约定（重要）
-
-代码自己生成的 HTML 用 `html` 模板标签写，它返回一个 **Out 对象**（内部带 `__html`）：
-
-```js
-const el = App.util.html`<p class="doc-p">${userText}</p>`;
-//      ↑ 返回 Out 对象：可以直接插进别的模板而不会被转义
-```
-
-规则：
-
-| 值 | 放进 `${...}` 的结果 |
+| 文档 | 内容 |
 | --- | --- |
-| 普通字符串（用户输入、文件名、题目） | **自动转义**（防 XSS） |
-| `html\`...\`` 的返回值（Out 对象） | 原样输出（嵌套组件安全） |
-| `App.ui.statCard(...)` 等组件 | 同上（组件内部也用 `html` 标签） |
-
-### 3. 事件统一分发
-
-所有可点击元素写成 `data-action="xxx"`，统一在 `app.js` 的 `handleAction()` 里分发。
-好处：视图只负责「长什么样」，交互逻辑集中在一处，方便审阅与测试。
+| [docs/architecture.md](docs/architecture.md) | 技术文档主稿：架构、AI 技术方案、踩坑记录、已知问题 |
+| [docs/requirements.md](docs/requirements.md) | 需求原文整理 |
+| [docs/competition-env.md](docs/competition-env.md) | 官方比赛环境与技术栈要求整理 |
+| [docs/backend-design.md](docs/backend-design.md) | 后端设计方案（含依赖可行性实测） |
+| [docs/setup.md](docs/setup.md) | 环境配置详细说明 |
+| [frontend/README.md](frontend/README.md) | 前端架构与页面说明 |
 
 ---
 
-## 五、演示数据从哪来
+## 开发进度
 
-`scripts/data/mock-data.js` 里的论文清单直接来自需求文档第 2 节点名的 `pdf/` 目录（45 篇），
-包括 4 个必测文件：
-
-- `1706.03762v7.pdf` / `1706.03762v1.pdf` —— 内容去重的主场景（同名不同版本）
-- `1706.03762v1_img.pdf` —— 扫描件解析分支
-- `UnderstandingDeepLearning_02_09_26_C.pdf` —— 541 页超长文档分支
-
-问答素材（需求 1.2 的 8 道例题）答案与出处均取自真实论文内容。
-
----
-
-## 六、接后端要改的地方
-
-| 要改什么 | 改哪个文件 | 怎么改 |
+| 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 数据源 | `scripts/data/mock-data.js` | `App.data` 的每个字段对应一个 `GET` 请求 |
-| 业务动作 | `scripts/core/store.js` | 把 `U.mockAsync` / `U.sleep` 换成 `fetch()`，视图无需改动 |
-| 检索引擎 | `scripts/core/rag.js` | `retrieve()` 换成后端接口（BM25 + 向量混合 + Rerank），保持函数签名 |
-| 大模型流式输出 | `store.js` 的 `ask()` | 改成 SSE / WebSocket 接收 token |
-| 图谱布局 | `scripts/views/graph.js` | 力导向可交给后端（NetworkX 预计算），前端只绘制 |
-| 密钥安全 | —— | API Key 只从环境变量读取，绝不出现在前端代码或公开仓库（对应提交要求 3.5） |
+| P0 | 后端骨架（配置 / 日志 / 错误 / 数据库 / 健康检查） | ✅ 完成 |
+| P1 | 上传、内容指纹去重、版本识别 | ✅ 完成 |
+| P2 | PDF 结构化解析 + 解析状态机 | ✅ 完成 |
+| P3 | 混合检索（BM25 + 向量 + RRF） | ⏳ 进行中 |
+| P4 | RAG 问答与引用校验 | 计划中 |
+| P5 | 引用图谱分析 | 计划中 |
+| P6 | 论文发现与推荐 | 计划中 |
+| P7 | 写作助手 | 计划中 |
+| P8 | 前后端联调 | 计划中 |
+| P9 | 在线演示部署 | 计划中 |
+| P10 | 技术文档与演示视频 | 计划中 |
 
 ---
 
-## 七、自测
+## 开发说明
 
-项目自带一套**无浏览器冒烟测试**（只用 Node.js 内置模块，无 npm 依赖）：
-
-```bash
-cd research-assistant
-node tools/smoke/run.js        # 主测试：80 项（渲染 / 交互 / 算法 / 数据一致性）
-node tools/smoke/scanraw.js    # 检查有无 HTML 被当成文本输出（转义类 bug）
-node tools/smoke/checkobj.js   # 检查渲染结果里有无 [object Object]
-node tools/smoke/final.js      # 交付自检：语法 / 引用完整性 / 文件清单 / 代码规模
-```
-
-预期结果：`80/80 通过，失败 0，加载错误 0`。工具的内部实现见 [`tools/smoke/README.md`](tools/smoke/README.md)。
-
-测试内容包括：
-
-- 8 个视图都能渲染，且关键元素（`#drop` / `#plist` / `#gcanvas` / `.gnode` / `.qa-example` …）真实存在
-- 去重的三种处理方式都能生效；v1 上传到「只有 v7」的文库时能识别为 `version` 并提示保留文库版本
-- RAG 检索能命中需求 5 道例题的证据片段；无命中时明确说明而不是编造
-- 图谱 42 节点 / 引用边渲染正常；综述覆盖三条演化主线
-- 推荐 👍/👎 会实时改变排序
-- CSV 解析、图注生成、柱状图/雷达图 SVG 合法
-- 正文引文编号与 References 条目一一对应、正文块 id 唯一、目录锚点都有落地
-- `html` 模板确实会转义普通字符串（XSS 防护有效），嵌套 Out 对象不被转义
+本项目开发过程中使用了 AI 辅助编程工具，协同方式与 Prompt 策略详见 [docs/architecture.md](docs/architecture.md)。
 
 ---
 
-## 八、已知限制（诚实说明）
+## 许可证
 
-1. **只有《Attention Is All You Need》内置了完整正文与逐段译文**；其余论文在阅读器中展示解析结果摘要。
-   接后端后所有论文都会有正文。
-2. **划词翻译**用的是术语表替换（`reader.js` 的 `glossary`），不是真机翻译；
-   整篇翻译 / 中译英同理，都是演示算法，真实实现调用翻译 API。
-3. **图谱布局**是前端确定性力导向（种子固定，每次刷新一致），不是实时物理模拟。
-4. **推荐流与抓取**是演示数据，不会真的访问 arXiv。
-5. 所有「解析」「下载」都是 `setTimeout` 模拟的进度，没有真实网络请求。
+[MIT](LICENSE)
