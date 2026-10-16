@@ -78,3 +78,18 @@ class PaperUpdate(BaseModel):
     starred: bool | None = None
 
 
+
+class ParseStateOut(BaseModel):
+    """解析状态查询的响应。"""
+
+    paper_id: str
+    parse_status: str
+    parse_error: str | None = None
+    quality: float | None = None
+    page_count: int | None = None
+    section_count: int | None = Field(default=None, description="识别出的章节数")
+    reference_count: int | None = Field(default=None, description="识别出的参考文献数")
+    is_scanned: bool | None = None
+    needs_review: bool | None = None
+    warnings: list[str] = Field(default_factory=list)
+    started: bool = Field(default=True, description="是否启动了新解析（false 表示已在进行中）")

@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models.paper import Paper
 from app.services import paper_service
 
 
@@ -175,7 +174,7 @@ async def test_find_by_sha1(db):
 
 async def test_count_by_status(db):
     up = paper_service.save_upload("a.pdf", PDF_A)
-    p1 = await paper_service.create_paper(db, uploaded=up, file_name="a.pdf")
+    await paper_service.create_paper(db, uploaded=up, file_name="a.pdf")
     up2 = paper_service.save_upload("b.pdf", PDF_B)
     p2 = await paper_service.create_paper(db, uploaded=up2, file_name="b.pdf")
     p2.parse_status = "done"

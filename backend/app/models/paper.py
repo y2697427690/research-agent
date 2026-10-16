@@ -2,7 +2,7 @@
 
 P0 阶段只建这一张表，用于验证建表流程与数据库连通性。
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -15,7 +15,7 @@ def utcnow() -> datetime:
 
     统一用 UTC 存储，避免服务器时区变化导致时间错乱。
     """
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Paper(Base):

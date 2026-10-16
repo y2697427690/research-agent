@@ -9,6 +9,7 @@
 必须用 anyio.to_thread.run_sync 丢到线程池执行。实测直接调用会让
 事件循环阻塞 833ms，而走线程池时其它请求仍能在 64ms 内得到响应。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,6 +28,28 @@ logger = get_logger(__name__)
 # 置信度低于此值即标记为需人工校对
 REVIEW_THRESHOLD = 0.6
 
+# ---------------------------------------------------------------- 状态说明
+#
+# 解析状态机（Paper.parse_status）流转：
+#
+#     queued ──开始解析──> parsing ──成功且质量好──> done
+#                              │
+#                              ├──成功但质量低/扫描件──> need_review
+#                              └──抛异常──────────────> failed
+#
+# 各状态含义：
+#     queued       排队中，已入库但尚未解析
+#     parsing      解析中
+#     done         解析成功且置信度达标
+#     need_review  解析完成但质量低，或判定为扫描件，需人工校对
+#     failed       解析过程出错，原因写入 Paper.parse_error
+#
+# 两个入口的分工：
+#     parse_paper          给「接口」调用。出错直接抛出，由接口层接住并返回给用户；
+#                          不自己提交事务，由接口层统一提交。
+#     parse_paper_safely   给「后台任务」调用。后台任务抛出的异常无人接收，
+#                          因此必须自己捕获、回滚并写入 failed 状态，
+#                          否则论文会永久停留在 parsing。
 
 @dataclass
 class ParseOutcome:

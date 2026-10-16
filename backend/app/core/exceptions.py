@@ -113,4 +113,3 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=500,
             content=error_body("INTERNAL_ERROR", "服务器内部错误"),
         )
-    

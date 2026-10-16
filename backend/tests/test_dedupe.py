@@ -5,7 +5,6 @@
         1706.03762v1.pdf vs 1706.03762v7.pdf 去重
 """
 
-from pathlib import Path
 
 import pytest
 
@@ -163,7 +162,7 @@ def test_same_id_without_version_is_likely_duplicate():
 def test_verdict_describe_is_chinese_and_readable():
     lib = [ExistingPaper("p1",SAME,"1706.03762v1.pdf","1706.03762")]
     v= detect_duplicate(sha1 = SAME,file_name = "x.pdf",existing = lib)
-    
+
     assert isinstance(v.describe(), str)
     assert "1706.03762" in v.describe()
 

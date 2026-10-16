@@ -3,7 +3,7 @@
 确认服务存活，数据库可联通，大模型配置是否就绪
 """
 
-from fastapi import APIRouter,Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 

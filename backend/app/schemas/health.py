@@ -4,6 +4,7 @@
 # 再单独提供接口按需调用
 from pydantic import BaseModel, Field
 
+
 class DBStatus(BaseModel):
     """数据库状态"""
     ok: bool = Field(description="数据库是否可连通")

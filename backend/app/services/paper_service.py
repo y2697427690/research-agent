@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +24,6 @@ from app.services.dedupe import (
     ExistingPaper,
     detect_duplicate,
     extract_arxiv_id,
-    normalize_stem,
     sha1_of_bytes,
 )
 
@@ -45,7 +43,7 @@ class UploadedFile:
 def save_upload(file_name: str, data: bytes) -> UploadedFile:
 
     """把上传内容写入本地存储，返回指纹与路径
-        
+
        保存前先按内容哈希校验一次，确保写入的字节与算出的指纹一致；
        木乱年月分层，避免单目录文件较多。
 
@@ -54,7 +52,7 @@ def save_upload(file_name: str, data: bytes) -> UploadedFile:
     size = len(data)
 
     #以[年月/contenthash_源文件名]组织，同名但不同版本不会相互覆盖
-    stamp = datetime.now(timezone.utc).strftime("%Y%m")
+    stamp = datetime.now(UTC).strftime("%Y%m")
     safe_name = Path(file_name).name or "unnamed.pdf"
     rel = f"{stamp}/{sha1}_{safe_name}"
 
@@ -85,7 +83,7 @@ def remove_file(rel_path: str) -> bool:
 
 async def _load_existing(db: AsyncSession) -> list[ExistingPaper]:
     """"读出全部论文的最小信息，供去重比对使用
-    
+
         直选需要的咧。避免吧摘要等大字段也读进内存
     """
     rows = (
@@ -125,7 +123,7 @@ async def create_paper(
         keep_existing:bool = True,
 ) -> Paper:
     """把落盘的文件登记进数据库
-    
+
         keep_existing = True 用于用户确认要保留新版本的场景：
         默认会把同名的旧纪录标记为被替代（此处仅记录日志，替换策略由接口层决定）
     """

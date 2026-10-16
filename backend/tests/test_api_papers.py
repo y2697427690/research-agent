@@ -12,9 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.config import settings
-from app.db.base import Base
 import app.db.session as db_session
+from app.core.config import settings
 
 PDF_V1 = b"%PDF-1.4\n" + b"A" * 2000
 PDF_V7 = b"%PDF-1.4\n" + b"B" * 3000

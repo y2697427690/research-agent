@@ -3,14 +3,16 @@
 本层只负责 HTTP：解析请求、调用 service、组装响应、映射错误。
 不写 SQL，也不做业务判断。
 """
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import InvalidRequest, NotFound, UploadTooLarge
 from app.core.logging import get_logger
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.models.paper import Paper
 from app.schemas.common import Ok, Page
 from app.schemas.paper import (
@@ -18,9 +20,10 @@ from app.schemas.paper import (
     PaperCreateResult,
     PaperOut,
     PaperUpdate,
+    ParseStateOut,
     UploadResponse,
 )
-from app.services import paper_service
+from app.services import paper_service, parser_service
 from app.services.dedupe import DuplicateVerdict
 
 router = APIRouter(prefix="/papers", tags=["论文"])
@@ -181,6 +184,90 @@ async def paper_stats(db: AsyncSession = Depends(get_db)) -> dict:
         "by_status": by_status,
     }
 
+async def _parse_in_background(paper_id: str) -> None:
+    """后台任务：解析论文。
+
+    必须自己创建数据库会话——请求结束后请求级的会话已被回收，
+    直接复用会报错。
+    """
+    async with SessionLocal() as db:
+        await parser_service.parse_paper_safely(db, paper_id)
+
+
+@router.post("/{paper_id}/parse", response_model=ParseStateOut, summary="触发解析")
+async def start_parse(
+    paper_id: str,
+    background: BackgroundTasks,
+    wait: bool = Query(
+        default=False,
+        description="true 时等解析完成再返回；false 时立即返回，解析在后台执行",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> ParseStateOut:
+    """解析论文的 PDF。
+
+    默认（wait=false）立即返回并把解析交给后台任务，适合批量上传后统一触发；
+    wait=true 则等待解析完成，便于调试与单篇手动解析。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    # 已在解析中则不重复启动，避免同一篇被并行解析两次
+    if paper.parse_status == "parsing":
+        return ParseStateOut(
+            paper_id=paper.id,
+            parse_status=paper.parse_status,
+            quality=paper.quality,
+            page_count=paper.page_count,
+            started=False,
+        )
+
+    if wait:
+        outcome = await parser_service.parse_paper(db, paper_id)
+        await db.commit()
+        await db.refresh(paper)
+        return ParseStateOut(
+            paper_id=paper.id,
+            parse_status=paper.parse_status,
+            parse_error=paper.parse_error,
+            quality=paper.quality,
+            page_count=paper.page_count,
+            warnings=outcome.warnings,
+            started=True,
+        )
+
+    # 后台模式：先把状态置为 parsing 并提交。
+    # 若等响应返回后再提交，前端立刻轮询会看到旧的 queued 状态而误以为没开始。
+    paper.parse_status = "parsing"
+    await db.commit()
+    background.add_task(_parse_in_background, paper_id)
+
+    return ParseStateOut(
+        paper_id=paper.id,
+        parse_status="parsing",
+        started=True,
+    )
+
+@router.get("/{paper_id}/parse", response_model=ParseStateOut, summary="查询解析状态")
+async def get_parse_state(
+    paper_id: str, db: AsyncSession = Depends(get_db)
+) -> ParseStateOut:
+    """查询论文的解析状态，不触发解析。
+
+    前端在后台解析模式下用它轮询进度，直到 parse_status 不再是 parsing。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    return ParseStateOut(
+        paper_id=paper.id,
+        parse_status=paper.parse_status,
+        parse_error=paper.parse_error,
+        quality=paper.quality,
+        page_count=paper.page_count,
+    )
 
 @router.get("/{paper_id}", response_model=PaperOut, summary="论文详情")
 async def get_paper(paper_id: str, db: AsyncSession = Depends(get_db)) -> PaperOut:

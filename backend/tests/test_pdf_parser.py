@@ -124,7 +124,7 @@ def test_quality_scales_with_text_volume(tmp_path):
     _make_pdf(
         dense,
         [[("1 Section", 108, 100, 12)] + [
-            ("Filler sentence number %d with a bit more text to raise density." % i,
+                        (f"Filler sentence number {i} with a bit more text to raise density.",
              108, 120 + i * 12, 10) for i in range(30)
         ]],
     )
