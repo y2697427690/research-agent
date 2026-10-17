@@ -61,6 +61,23 @@ class Settings(BaseSettings):
         "null",
     ]
 
+    # ---------- 嵌入模型（向量检索）----------
+    # 留空则向量检索自动降级为纯 BM25，检索功能不中断。
+    # 默认指向阿里云百炼的 OpenAI 兼容端点。
+    embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embedding_api_key: SecretStr | None = None
+    embedding_model: str = "text-embedding-v3"
+    # 百炼对单次请求的文本条数有限制，因此批量时要分批
+    embedding_batch_size: int = 10
+    embedding_timeout: float = 30.0
+    # 向量维度不硬编码：首次调用后从响应里读出来，避免模型换了维度就崩
+    embedding_dim: int | None = None
+
+    @property
+    def embeddings_enabled(self) -> bool:
+        """是否配置了嵌入模型。未配置时检索走纯 BM25。"""
+        return self.embedding_api_key is not None
+
     @property
     def has_llm(self) -> bool:
         """是否配置了大模型 Key。未配置时后续走规则降级逻辑。"""

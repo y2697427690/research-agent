@@ -113,3 +113,20 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=500,
             content=error_body("INTERNAL_ERROR", "服务器内部错误"),
         )
+
+
+class EmbeddingUnavailable(AppError):
+    """嵌入模型不可用（未配置 Key 或调用失败）。
+
+    上层收到它时应降级为纯 BM25 检索，而不是让整个请求失败——
+    检索能力会变弱，但功能不中断。
+    """
+
+    code = "EMBEDDING_UNAVAILABLE"
+    status = 503
+
+    def __init__(self, message: str = "嵌入模型不可用", detail: dict | None = None) -> None:
+        super().__init__(message, detail)
+
+
+
