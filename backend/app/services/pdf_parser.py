@@ -108,6 +108,8 @@ class ParsedDocument:
     abstract: str | None = None
     references: list[str] = field(default_factory=list)
     full_text: str = ""
+    # 按页正文（页码从 1 开始）。分块时需要按页定位，因此单独保留一份。
+    page_texts: dict[int, str] = field(default_factory=dict)
     quality: float = 0.0
     needs_review: bool = False
     warnings: list[str] = field(default_factory=list)
@@ -573,6 +575,15 @@ def parse_pdf(path: str | Path, sample_pages: int = 5) -> ParsedDocument:
                         title=ln.text, page_no=ln.page_no, source="heuristic",
                     ))
         result.sections.sort(key=lambda s: (s.page_no, s.level))
+
+        # 3.5) 汇总按页正文。分块需要按页定位，因此这里一并保留。
+        by_page: dict[int, list[str]] = {}
+        for ln in all_lines:
+            by_page.setdefault(ln.page_no, []).append(ln.text)
+        result.page_texts = {
+            pno: "\n".join(texts) for pno, texts in sorted(by_page.items())
+        }
+        result.full_text = "\n\n".join(result.page_texts.values())
 
         # 4) 标题：第 1 页字号最大的短行（须排除竖排侧边水印）
         first_page_lines = [ln for ln in all_lines if ln.page_no == 1]
