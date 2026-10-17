@@ -1,0 +1,18 @@
+[Unit]
+Description=Research Assistant Agent API
+Documentation=https://github.com/y2697427690/research-agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/research-agent/backend
+# 应用自身通过 pydantic-settings 读取 backend/.env，
+# 因此这里不使用 EnvironmentFile，避免 systemd 对注释与空值的解析差异。
+ExecStart=/opt/research-agent/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
