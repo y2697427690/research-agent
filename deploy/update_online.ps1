@@ -59,7 +59,10 @@ Write-Host "    上传完成"
 
 Write-Host ""
 Write-Host "==> 4/4 服务器端拉取并重启" -ForegroundColor Cyan
-$cmd = "cd " + $AppDir + " && git pull /root/repo.bundle main && git --no-pager log --oneline -3"
+# 服务器作为部署目标，应保持为仓库的纯镜像：先丢弃服务器上的任何本地改动
+# （例如曾用 sed 手工修过的文件），否则 git pull 会因「本地改动将被覆盖」而拒绝合并。
+# .env 与 data/ 均在 .gitignore 中，不受 reset 影响。
+$cmd = "cd " + $AppDir + " && git reset --hard HEAD -q && git pull /root/repo.bundle main && git --no-pager log --oneline -3"
 if (-not $SkipRestart) {
     $cmd = $cmd + " && systemctl restart research-agent && sleep 4 && systemctl is-active research-agent && curl -s -m 10 http://127.0.0.1:8000/api/v1/health"
 }
