@@ -233,6 +233,11 @@ async def start_parse(
             parse_error=paper.parse_error,
             quality=paper.quality,
             page_count=paper.page_count,
+            # 以下字段由本次解析结果直接给出，避免响应中恒为 null
+            section_count=outcome.section_count,
+            reference_count=outcome.reference_count,
+            is_scanned=outcome.is_scanned,
+            needs_review=paper.parse_status == "need_review",
             warnings=outcome.warnings,
             started=True,
         )
