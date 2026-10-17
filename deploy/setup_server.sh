@@ -121,9 +121,22 @@ log "4/6 创建虚拟环境并安装依赖（首次耗时较长）"
 if [ ! -d .venv ]; then
     "$PY" -m venv .venv
 fi
-./.venv/bin/python -m pip install -q -U pip
-./.venv/bin/python -m pip install -q -e .
-echo "    已安装主依赖"
+PIP_ARGS=(--timeout 30 --retries 3)
+./.venv/bin/python -m pip install -q -U pip "${PIP_ARGS[@]}"
+
+# 国内服务器直连 PyPI 常出现下载失败（表现为 "No matching distribution found"）。
+# 先试默认源，失败则自动切清华镜像重试。
+if ./.venv/bin/python -m pip install -q -e . "${PIP_ARGS[@]}"; then
+    echo "    已安装主依赖（默认源）"
+else
+    warn "默认 PyPI 源安装失败，切换清华镜像重试"
+    ./.venv/bin/python -m pip config set global.index-url \
+        https://pypi.tuna.tsinghua.edu.cn/simple >/dev/null
+    ./.venv/bin/python -m pip config set global.trusted-host \
+        pypi.tuna.tsinghua.edu.cn >/dev/null
+    ./.venv/bin/python -m pip install -q -e . "${PIP_ARGS[@]}"
+    echo "    已安装主依赖（清华镜像，该源已写入本 venv 的 pip 配置）"
+fi
 ./.venv/bin/python -c "import fastapi, sqlalchemy, pymupdf, networkx; print('    依赖自检通过')"
 
 # ---------------------------------------------------------------- 5. 环境变量
