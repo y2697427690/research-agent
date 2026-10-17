@@ -86,14 +86,30 @@ fi
 # ---------------------------------------------------------------- 3. 代码
 
 log "3/6 获取代码到 $APP_DIR"
-if [ -d "$APP_DIR/.git" ]; then
+# SKIP_GIT=skip 用于服务器无法访问 GitHub 的场景（代码已由本地打包上传）
+if [ "${SKIP_GIT:-auto}" = "skip" ]; then
+    echo "    已指定 SKIP_GIT=skip，跳过 git 同步"
+    if [ ! -d "$APP_DIR/backend" ]; then
+        echo "    错误：$APP_DIR/backend 不存在，请先把代码上传到该目录"
+        exit 1
+    fi
+elif [ -d "$APP_DIR/.git" ]; then
     cd "$APP_DIR"
-    git fetch --all -q
-    git reset --hard origin/main
-    echo "    已更新到 origin/main"
+    if git fetch --all -q 2>/dev/null; then
+        git reset --hard origin/main
+        echo "    已更新到 origin/main"
+    else
+        warn "git fetch 失败（可能无法访问 GitHub），继续使用现有代码"
+    fi
+elif [ -d "$APP_DIR/backend" ]; then
+    echo "    目录已存在但无 .git，跳过克隆，直接使用现有代码"
 else
     mkdir -p "$(dirname "$APP_DIR")"
-    git clone "$REPO_URL" "$APP_DIR"
+    if ! git clone "$REPO_URL" "$APP_DIR"; then
+        warn "从 GitHub 克隆失败。若服务器访问不了 GitHub，请改为："
+        warn "  在本地执行 git bundle create repo.bundle --all，再用 scp 上传后在服务器 clone"
+        exit 1
+    fi
     echo "    已克隆仓库"
 fi
 
