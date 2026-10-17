@@ -141,11 +141,24 @@ start frontend\index.html       # Windows
 
 ## 在线演示
 
-_（部署完成后填写）_
+服务已部署在阿里云 ECS（Ubuntu 22.04 / Python 3.12 / systemd 托管）。
 
-- **前端**：待填
-- **接口文档**：待填 `/docs`
-- **登录**：无需登录
+| 入口 | 地址 |
+| --- | --- |
+| **接口文档（Swagger UI）** | http://47.96.97.141:8000/docs |
+| **接口文档（ReDoc）** | http://47.96.97.141:8000/redoc |
+| **健康检查** | http://47.96.97.141:8000/api/v1/health |
+| **登录** | 无需登录 |
+
+**线上验证**（在你自己的机器上运行，会完整走一遍 上传 → 解析 → 查询）：
+
+```bash
+python deploy/verify_online.py
+```
+
+> **说明**：当前部署使用「公网 IP + 8000 端口」，**不依赖域名与备案**。
+> 部署脚本与运维说明见 [`deploy/README.md`](deploy/README.md)。
+> 该 ECS 为 3 个月免费试用，到期前需完成续费或迁移（见 [docs/architecture.md](docs/architecture.md) 附录 C）。
 
 ---
 
