@@ -13,8 +13,39 @@
 - **P6** 论文发现与推荐
 - **P7** 写作助手
 - **P8** 前后端联调（前端接入真实接口）
-- **P9** 在线演示部署（含 Docker 与 nginx 配置）
 - **P10** 技术文档与演示视频
+
+### 待处理风险
+- ⚠️ ECS 免费试用约 **2027-01-16 到期**，而评审持续到 1 月底。
+  需在 **2026-12-15 前**完成续费或迁移到包年实例（部署已脚本化，迁移成本约 5 分钟）。
+
+---
+
+## [0.3.0] - 2026-10-17
+
+### 新增
+- **在线演示部署**（P9 提前完成）
+  - 阿里云 ECS（Ubuntu 22.04 / Python 3.12 / SQLite）
+  - systemd 托管，开机自启、崩溃自动重启
+  - 访问入口：http://47.96.97.141:8000/docs （公网 IP + 8000 端口，无需域名与备案）
+- **部署工具链**（`deploy/`）
+  - `setup_server.sh`：幂等的一键部署脚本
+  - `update_online.ps1`：一键更新线上（bundle → scp → pull → 重启 → 健康检查）
+  - `verify_online.py`：线上链路验证，18 项检查，退出码可用于 CI
+  - `research-agent.service` / `nginx.conf` / `README.md`
+
+### 修复
+- 解析接口 `wait=true` 分支补齐 `section_count` / `reference_count` /
+  `is_scanned` / `needs_review`，此前这四个字段恒为 null
+- `python-multipart>=0.09` 版本约束笔误：`0.09` 被 PEP 440 解析为 `0.9`，
+  导致依赖解析失败（表现为「有可用版本却说找不到」）
+- 部署脚本支持 `SKIP_GIT=skip` 与 pip 失败自动切清华镜像，
+  应对国内服务器访问 GitHub / PyPI 不稳定的情况
+
+### 部署验证
+- 线上实测：上传 2.03 MB PDF 耗时 0.32 秒，解析耗时 0.81 秒，
+  quality=1.0、15 页、22 章节、36 条参考文献，标题正确提取
+- `deploy/verify_online.py` 结果：**18 项通过 / 0 失败**
 
 ---
 
