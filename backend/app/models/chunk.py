@@ -10,7 +10,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -55,4 +55,14 @@ class Chunk(Base):
 
     def __repr__(self) -> str:
         return f"<Chunk {self.paper_id}#{self.chunk_index} {self.char_count}B>"
+
+    # 向量表示。用 float32 的原始字节存储：
+    # 2 万分块 × 1536 维 × 4 字节约 120 MB，SQLite 完全可以承载。
+    # 存二进制而不是 JSON 数组，体积小一半以上、读取也更快。
+    # 为 None 表示尚未嵌入（未配置 Key 或还没跑过嵌入任务）。
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+
+    # 记录这条向量由哪个模型产生。换模型后旧向量不可比，
+    # 靠这个字段可以筛出需要重新嵌入的分块。
+    embedding_model: Mapped[str | None] = mapped_column(String(64), default=None)
 

@@ -10,7 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import InvalidRequest, NotFound, UploadTooLarge
+from app.core.exceptions import (
+    EmbeddingUnavailable,
+    InvalidRequest,
+    NotFound,
+    UploadTooLarge,
+)
 from app.core.logging import get_logger
 from app.db.session import SessionLocal, get_db
 from app.models.paper import Paper
@@ -23,7 +28,8 @@ from app.schemas.paper import (
     ParseStateOut,
     UploadResponse,
 )
-from app.services import paper_service, parser_service
+from app.schemas.search import EmbedRequest, EmbedResponse
+from app.services import chunk_service, paper_service, parser_service
 from app.services.dedupe import DuplicateVerdict
 
 router = APIRouter(prefix="/papers", tags=["论文"])
@@ -324,5 +330,41 @@ async def delete_paper(
         raise NotFound("论文不存在", {"paper_id": paper_id})
     await db.commit()
     return Ok(ok=True)
+
+
+# ---------------------------------------------------------------- 向量化
+
+
+@router.post("/{paper_id}/embed", response_model=EmbedResponse, summary="生成向量")
+async def embed_paper(
+    paper_id: str,
+    payload: EmbedRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> EmbedResponse:
+    """为这篇论文尚未嵌入的分块生成向量。
+
+    与解析分开是为了让费用可控：解析免费且快，嵌入按量计费。
+    未嵌入的论文仍可被 BM25 检索到，只是缺少语义召回能力。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    limit = payload.limit if payload else None
+    stats = await chunk_service.embed_pending(db, paper_id, limit=limit)
+    await db.commit()
+
+    if stats.total == 0 and stats.errors:
+        # 没有可处理的块且存在错误，说明是配置或环境问题，明确告知
+        raise EmbeddingUnavailable(stats.errors[0])
+
+    return EmbedResponse(
+        paper_id=paper_id,
+        total=stats.total,
+        embedded=stats.embedded,
+        failed=stats.failed,
+        dim=stats.dim,
+        errors=stats.errors,
+    )
 
 

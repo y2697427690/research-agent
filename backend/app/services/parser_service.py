@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.paper import Paper
-from app.services import paper_service
+from app.services import chunk_service, paper_service
 from app.services.pdf_parser import ParsedDocument, parse_pdf
 
 logger = get_logger(__name__)
@@ -103,10 +103,18 @@ async def parse_paper(db: AsyncSession, paper_id: str) -> ParseOutcome:
     _apply_result(paper, doc)
     await db.flush()
 
+    # 解析成功后立刻切块入库，检索侧才能马上用上这篇论文的正文。
+    # 切块失败不应让已经成功的解析作废，因此单独兜住异常。
+    chunk_count = 0
+    try:
+        chunk_count = await chunk_service.replace_chunks(db, paper_id, doc)
+    except Exception:                             # noqa: BLE001 切块失败不致命
+        logger.exception("切块失败 %s（解析结果仍然保留）", paper_id)
+
     logger.info(
-        "解析结束 %s: status=%s quality=%.2f 页数=%d 章节=%d 参考文献=%d",
+        "解析结束 %s: status=%s quality=%.2f 页数=%d 章节=%d 参考文献=%d 分块=%d",
         paper_id, paper.parse_status, doc.quality, doc.page_count,
-        len(doc.sections), len(doc.references),
+        len(doc.sections), len(doc.references), chunk_count,
     )
     return ParseOutcome(
         paper_id=paper_id,
