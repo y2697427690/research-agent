@@ -194,6 +194,109 @@ def main() -> int:
         except Exception:
             c.check("错误信封格式正确", False, r.text[:120])
 
+        # ---------------- 7. 索引状态 ----------------
+        c.section("7. 索引状态（分块与向量）")
+        r = client.get("/search/index")
+        c.check("索引状态 HTTP 200", r.status_code == 200, "实际 %s" % r.status_code)
+        status = r.json() if r.status_code == 200 else {}
+        print("       " + json.dumps(status, ensure_ascii=False))
+        c.check("已建立分块索引", status.get("chunks", 0) > 0,
+                "chunks=%s" % status.get("chunks"))
+
+        # 若还未向量化则补做一次。
+        # 说明：每次执行本脚本都会重新解析，而解析会重建分块；
+        # 块文本未变时向量会被复用，但首次运行仍需生成。
+        if status.get("embedding_available") and status.get("embedded", 0) == 0:
+            print("       发现尚未向量化，自动补做…")
+            t0 = time.perf_counter()
+            r = client.post("/papers/%s/embed" % paper_id, json={})
+            if r.status_code == 200:
+                stats = r.json()
+                print("       嵌入完成：%d/%d 成功，维度 %s，耗时 %.2f 秒"
+                      % (stats["embedded"], stats["total"], stats["dim"],
+                         time.perf_counter() - t0))
+            r = client.get("/search/index")
+            status = r.json() if r.status_code == 200 else {}
+
+        if status.get("embedding_available"):
+            c.check("已完成向量化", status.get("embedded", 0) > 0,
+                    "embedded=%s" % status.get("embedded"))
+
+        # ---------------- 8. 检索 ----------------
+        c.section("8. 检索（跨语言：中文提问英文论文）")
+        query = "什么是位置编码"
+        r = client.post("/search", json={"query": query, "top_k": 3, "allow_vector": False})
+        bm25_hits = r.json().get("hits", []) if r.status_code == 200 else []
+        print("       纯 BM25 命中 %d 条" % len(bm25_hits))
+
+        r = client.post("/search", json={"query": query, "top_k": 3})
+        c.check("检索 HTTP 200", r.status_code == 200, "实际 %s" % r.status_code)
+        if r.status_code == 200:
+            data = r.json()
+            c.check("混合检索有结果", len(data["hits"]) > 0,
+                    "mode=%s 命中=%d" % (data["mode"], len(data["hits"])))
+            if data["hits"]:
+                top = data["hits"][0]
+                c.check("首位命中带出处", bool(top["citation"]),
+                        top["citation"])
+                c.check("向量检索在纯 BM25 之上的补充",
+                        len(bm25_hits) == 0 and len(data["hits"]) > 0,
+                        "BM25 %d 条 -> 混合 %d 条" % (len(bm25_hits), len(data["hits"])))
+
+        # ---------------- 9. 问答 ----------------
+        c.section("9. RAG 问答")
+        if status.get("embedding_available"):
+            r = client.post("/qa", json={"question": "编码器和解码器由哪些子层组成", "top_k": 6})
+            c.check("问答 HTTP 200", r.status_code == 200, "实际 %s" % r.status_code)
+            if r.status_code == 200:
+                ans = r.json()
+                c.check("有回答内容", bool(ans["answer"]), ans["answer"][:60])
+                c.check("回答带引用", len(ans["citations"]) > 0,
+                        "引用 %d 条" % len(ans["citations"]))
+                c.check("无编造引用编号", not ans["invalid_marks"],
+                        "非法编号=%s" % ans["invalid_marks"])
+                print("       回答: " + ans["answer"][:160].replace("\n", " "))
+
+            # 无关问题必须拒答，这是防幻觉的关键行为
+            r = client.post("/qa", json={"question": "今天北京天气怎么样", "top_k": 6})
+            if r.status_code == 200:
+                ans = r.json()
+                c.check("无关问题被拒答", ans["refused"] is True,
+                        "refused=%s" % ans["refused"])
+
+        # ---------------- 10. SSE 流式 ----------------
+        c.section("10. SSE 流式输出")
+        t0 = time.perf_counter()
+        stamps: list[float] = []
+        final = None
+        try:
+            with client.stream("POST", "/qa/stream",
+                               json={"question": "为什么自注意力比循环层更快",
+                                     "top_k": 5}) as resp:
+                c.check("流式 HTTP 200", resp.status_code == 200,
+                        "实际 %s" % resp.status_code)
+                c.check("content-type 为 event-stream",
+                        "text/event-stream" in resp.headers.get("content-type", ""),
+                        resp.headers.get("content-type", ""))
+                for line in resp.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    event = json.loads(line[len("data: "):])
+                    if event["type"] == "token":
+                        stamps.append(time.perf_counter() - t0)
+                    elif event["type"] == "done":
+                        final = event
+            c.check("收到 done 事件", final is not None)
+            if stamps:
+                buckets = len({int(s * 10) for s in stamps})
+                c.check("逐段推送（非一次性返回）", buckets >= 2,
+                        "%d 个 token 分布在 %d 个时间段，首字 %.2fs"
+                        % (len(stamps), buckets, stamps[0]))
+                print("       首字 %.2fs，总耗时 %.2fs"
+                      % (stamps[0], time.perf_counter() - t0))
+        except httpx.HTTPError as exc:
+            c.check("SSE 流式请求", False, str(exc)[:120])
+
     return c.summary()
 
 

@@ -5,6 +5,7 @@
 """
 import numpy as np
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -516,3 +517,39 @@ async def test_bm25_kept_when_specific_term_matches(tmp_path, monkeypatch):
 
     assert result.mode == "hybrid"
     assert result.bm25_candidates > 0
+
+async def test_replace_chunks_preserves_embeddings_of_unchanged_text(db_session_fixture, monkeypatch):
+    """重新解析时，块文本未变的向量必须复用，避免重复消耗嵌入额度。
+
+    分块过程是确定性的：同一份内容重新解析得到完全相同的块文本，
+    因此已有向量可以直接搬过去。若不保留，每次重新解析都要重新付费嵌入。
+    """
+    from app.models.chunk import Chunk
+    from app.services.pdf_parser import ParsedDocument, Section
+
+    doc = ParsedDocument(page_count=2)
+    doc.page_texts = {1: "第一章正文内容。" * 60, 2: "第二章正文内容。" * 60}
+    doc.sections = [Section(level=1, title="第一章", page_no=1),
+                    Section(level=1, title="第二章", page_no=2)]
+
+    async with db_session_fixture() as db:
+        n1 = await chunk_service.replace_chunks(db, "p1", doc)
+        await db.commit()
+
+        # 模拟已嵌入
+        rows = (await db.execute(select(Chunk).where(Chunk.paper_id == "p1"))).scalars().all()
+        assert len(rows) == n1
+        for r in rows:
+            r.embedding = pack_vectors([[0.1, 0.2]])
+            r.embedding_model = settings.embedding_model
+        await db.commit()
+
+        # 重新解析同一份内容
+        n2 = await chunk_service.replace_chunks(db, "p1", doc)
+        await db.commit()
+        assert n2 == n1
+
+        again = (await db.execute(select(Chunk).where(Chunk.paper_id == "p1"))).scalars().all()
+        assert len(again) == n1
+        kept = sum(1 for r in again if r.embedding is not None)
+        assert kept == n1, f"文本未变的块应保留向量，实际保留 {kept} / {n1}"

@@ -51,6 +51,21 @@ async def replace_chunks(
     先删后插：重新解析同一篇论文时不应产生重复块；
     且旧块对应的向量已经过期，必须一并清除。
     """
+    # 先记住现有向量：分块过程是确定性的，同一份 PDF 重新解析会得到完全相同的
+    # 块文本。若不做这层保留，任何一次重新解析（换模型、修 bug 后重跑）
+    # 都会把已经花过钱的向量全部丢弃，只能重新嵌入。
+    # 键用块文本本身：文本相同则语义相同，向量可以直接复用。
+    existing = (await db.execute(
+        select(Chunk.text, Chunk.embedding, Chunk.embedding_model).where(
+            Chunk.paper_id == paper_id, Chunk.embedding.is_not(None)
+        )
+    )).all()
+    preserved = {
+        text: (blob, model)
+        for text, blob, model in existing
+        if blob
+    }
+
     await db.execute(delete(Chunk).where(Chunk.paper_id == paper_id))
 
     pieces, stats = chunking.chunk_document(
@@ -60,8 +75,13 @@ async def replace_chunks(
         logger.info("论文 %s 无可分块内容（可能是扫描件）", paper_id)
         return 0
 
-    db.add_all([
-        Chunk(
+    reused = 0
+    rows = []
+    for piece in pieces:
+        blob, model = preserved.get(piece.text, (None, None))
+        if blob:
+            reused += 1
+        rows.append(Chunk(
             id=f"{paper_id}-c{piece.index}",
             paper_id=paper_id,
             chunk_index=piece.index,
@@ -71,14 +91,15 @@ async def replace_chunks(
             level=piece.level,
             page_start=piece.page_start,
             page_end=piece.page_end,
-        )
-        for piece in pieces
-    ])
+            embedding=blob,
+            embedding_model=model,
+        ))
+    db.add_all(rows)
     await db.flush()
 
     logger.info(
-        "论文 %s 分块完成: %d 块, 平均 %.0f 字符, 跳过文献块 %d",
-        paper_id, stats.total, stats.avg_chars, stats.skipped_reference_chunks,
+        "论文 %s 分块完成: %d 块, 平均 %.0f 字符, 跳过文献块 %d, 复用向量 %d",
+        paper_id, stats.total, stats.avg_chars, stats.skipped_reference_chunks, reused,
     )
     _invalidate_index()
     return stats.total
