@@ -72,6 +72,15 @@ window.App = window.App || {};
     notify(reason || 'set');
   }
 
+  /* ---------------- 离线守卫 ----------------
+     api.js 未加载（例如纯前端冒烟测试）或后端不可达时，
+     业务动作应降级为「只改本地状态」，而不是抛错或回滚。
+     注意只把「网络层不存在」当作离线；真实网络错误仍要提示用户。
+     ------------------------------------------------------------------ */
+  function hasApi() {
+    return !!(App.api && typeof App.api.health === 'function');
+  }
+
   /* ---------------- 动作（业务逻辑） ---------------- */
   const actions = {
     /* ===== 路由 ===== */
@@ -81,21 +90,44 @@ window.App = window.App || {};
       notify('route');
     },
 
+    /* ===== 数据同步 ===== */
+    /**
+     * 从后端加载论文列表。
+     * 应用启动时调用一次；上传/删除后重新调用即可刷新。
+     */
+    async loadPapers() {
+      if (!hasApi()) return state.papers;
+      try {
+        const resp = await App.api.listPapers(1, 100);
+        state.papers = App.adapter.papersFromApi(resp);
+        notify('papers');
+        return state.papers;
+      } catch (err) {
+        App.ui.toast('加载论文列表失败：' + err.message, 'error');
+        return [];
+      }
+    },
+
     /* ===== 上传 / 去重 ===== */
     /**
-     * 把一批文件加入上传队列，并逐个走「解析→去重」流水线。
-     * 真实实现里这里会调用 POST /api/papers（multipart）。
+     * 把一批文件加入上传队列，逐个上传到后端并触发解析。
+     *
+     * 真实流程（对应后端接口）：
+     *   1. POST /papers/upload        → 入库并做去重判定
+     *   2. POST /papers/{id}/parse    → 解析并自动切块
+     *   3. 稍后可 POST /papers/{id}/embed 生成向量（问答才需要）
      */
     addUploads(files) {
-      const items = files.map((f) => ({
+      const items = Array.prototype.map.call(files, (f) => ({
         id: U.uid('up'),
         name: f.name,
         size: f.size,
-        status: 'queued',   // queued → parsing → dedupe → done | duplicate | error
+        status: 'queued',   // queued → parsing → done | duplicate | error
         progress: 0,
         pages: null,
         chars: null,
         dupOf: null,
+        file: f,            // 保留原始 File 对象用于上传
       }));
       state.uploads = state.uploads.concat(items);
       notify('uploads');
@@ -103,36 +135,102 @@ window.App = window.App || {};
       return items;
     },
 
-    /** 模拟：解析 → 去重检测 → 入库 */
+    /** 真实上传 + 解析流水线 */
     async _runPipeline(id) {
       const get = () => state.uploads.find((u) => u.id === id);
-      const patch = (p) => { Object.assign(get(), p); notify('uploads'); };
+      const patch = (p) => { if (get()) { Object.assign(get(), p); notify('uploads'); } };
 
-      patch({ status: 'parsing', progress: 8 });
-      await U.sleep(420);
-      patch({ progress: 34 });
-      await U.sleep(380);
+      const item = get();
+      if (!item) return;
 
-      // 依据文件名猜测页数与字数（真实实现来自后端解析结果）
-      const name = get().name;
-      const seeded = U.seeded(name);
-      const pages = 6 + Math.floor(seeded() * 24);
-      patch({ progress: 62, pages, chars: Math.round(pages * (900 + seeded() * 900)) });
-      await U.sleep(400);
-      patch({ progress: 84 });
-
-      // ---- 去重检测：与文库已有论文比对 ----
-      const dup = App.dedupe.findDuplicate(name, state.papers);
-      await U.sleep(360);
-
-      if (dup) {
-        patch({ status: 'duplicate', progress: 100, dupOf: dup.paper.id, dupInfo: dup });
-      } else {
-        patch({ status: 'done', progress: 100 });
-        const paper = App.data.paperFromUpload(name, get());
-        state.papers = [paper].concat(state.papers);
+      // 离线模式：没有后端时用演示数据走一遍流程，界面仍可完整演示
+      if (!hasApi()) {
+        patch({ status: 'parsing', progress: 30 });
+        await U.sleep(300);
+        patch({ progress: 80 });
+        await U.sleep(200);
+        const demo = App.data.paperFromUpload(item.name, item);
+        state.papers = [demo].concat(state.papers);
+        patch({ status: 'done', progress: 100, pages: demo.pages });
+        return;
       }
-      notify('uploads');
+
+      patch({ status: 'parsing', progress: 10 });
+      let resp;
+      try {
+        resp = await App.api.uploadPapers([item.file]);
+      } catch (err) {
+        patch({ status: 'error', progress: 100, error: err.message });
+        App.ui.toast(item.name + ' 上传失败：' + err.message, 'error');
+        return;
+      }
+
+      patch({ progress: 45 });
+      const result = (resp.results || [])[0];
+      if (!result) {
+        patch({ status: 'error', progress: 100, error: '后端未返回结果' });
+        return;
+      }
+
+      // ---- 情况 1：处理失败 ----
+      if (result.error) {
+        patch({ status: 'error', progress: 100, error: result.error });
+        App.ui.toast(item.name + ' 处理失败：' + result.error, 'error');
+        return;
+      }
+
+      // ---- 情况 2：判定为重复 ----
+      if (result.duplicate) {
+        const dup = result.duplicate;
+        const existing = state.papers.find((p) => p.id === dup.existing_paper_id);
+        patch({
+          status: 'duplicate',
+          progress: 100,
+          dupOf: dup.existing_paper_id,
+          dupInfo: {
+            kind: dup.kind,
+            message: dup.message,
+            reasons: dup.reasons || [],
+            paper: existing || {
+              id: dup.existing_paper_id,
+              title: dup.existing_file_name || '（已存在的论文）',
+              file: dup.existing_file_name,
+            },
+          },
+        });
+        return;
+      }
+
+      // ---- 情况 3：入库成功 → 继续解析 ----
+      const paper = result.paper;
+      if (!paper) {
+        patch({ status: 'error', progress: 100, error: '上传失败' });
+        return;
+      }
+
+      patch({ progress: 70 });
+      try {
+        const st = await App.api.parsePaper(paper.id, true);
+        patch({
+          status: 'done',
+          progress: 100,
+          pages: st.page_count,
+          quality: st.quality,
+          parseStatus: st.parse_status,
+        });
+      } catch (err) {
+        // 解析失败不影响入库：论文已在列表里，可以稍后重试解析
+        patch({ status: 'done', progress: 100, parseError: err.message });
+        App.ui.toast('《' + item.name + '》已入库，但解析失败：' + err.message, 'warn');
+      }
+
+      await actions.loadPapers();
+
+      // 解析成功但没生成向量时，后台补做一次，让问答立刻可用。
+      // 失败不提示：没有向量仍可用 BM25 检索。
+      if (get() && get().status === 'done') {
+        App.api.embedPaper(paper.id).catch(() => {});
+      }
     },
 
     /** 去重弹窗里选择「覆盖文库版本」 */
@@ -173,26 +271,76 @@ window.App = window.App || {};
     },
 
     /* ===== 文库 ===== */
-    deletePaper(id) {
+    /**
+     * 删除论文。
+     * 先改本地状态让界面立刻响应，再调用后端；失败则把论文放回原位并提示。
+     * 这种「乐观更新」比等网络往返再刷新体验好得多（本地约 1ms vs 网络 50~200ms）。
+     */
+    async deletePaper(id) {
+      const index = state.papers.findIndex((p) => p.id === id);
+      if (index === -1) return;
+
+      const removed = state.papers[index];
+      const prevCurrent = state.currentPaperId;
+
       state.papers = state.papers.filter((p) => p.id !== id);
       if (state.currentPaperId === id) state.currentPaperId = null;
       notify('papers');
+
+      // 离线模式：没有后端时本地移除即可，不进入回滚逻辑
+      if (!hasApi()) return;
+
+      try {
+        await App.api.deletePaper(id, false);
+        App.ui.toast('已从文库移除', 'ok');
+      } catch (err) {
+        // 回滚：把论文放回原来的位置，恢复阅读目标
+        state.papers = state.papers
+          .slice(0, index)
+          .concat([removed], state.papers.slice(index));
+        if (prevCurrent === id) state.currentPaperId = id;
+        notify('papers');
+        App.ui.toast('删除失败：' + err.message, 'error');
+      }
     },
-    toggleStar(id) {
+    async toggleStar(id) {
       const p = state.papers.find((x) => x.id === id);
-      if (p) { p.starred = !p.starred; notify('papers'); }
+      if (!p) return;
+      const next = !p.starred;
+      // 先改本地让界面立刻响应，再同步后端；失败则回滚
+      p.starred = next;
+      notify('papers');
+      if (!hasApi()) return;
+      try {
+        await App.api.updatePaper(id, { starred: next });
+      } catch (err) {
+        p.starred = !next;
+        notify('papers');
+        App.ui.toast('收藏状态同步失败：' + err.message, 'error');
+      }
     },
-    /** 重新解析（模拟） */
+    /** 重新解析：会重建分块，内容未变的块会保留原有向量 */
     async reparse(id) {
       const p = state.papers.find((x) => x.id === id);
       if (!p) return;
       p.parsing = true; notify('papers');
-      await U.sleep(1400);
-      p.parsing = false;
-      p.parsedAt = new Date(App.data.NOW).toISOString();
-      p.quality = Math.min(0.99, (p.quality || 0.9) + 0.02);
-      notify('papers');
-      App.ui.toast('《' + U.clip(p.title, 22) + '》解析完成', 'ok');
+      if (!hasApi()) { p.parsing = false; notify('papers'); return; }
+      try {
+        const st = await App.api.parsePaper(id, true);
+        p.quality = st.quality;
+        p.pages = st.page_count;
+        p.status = st.parse_status;
+        p.parsedAt = new Date().toISOString();
+        p.parsing = false;
+        notify('papers');
+        await actions.loadPapers();
+        App.ui.toast('《' + U.clip(p.title, 22) + '》解析完成（置信度 '
+          + Math.round((st.quality || 0) * 100) + '%）', 'ok');
+      } catch (err) {
+        p.parsing = false;
+        notify('papers');
+        App.ui.toast('重新解析失败：' + err.message, 'error');
+      }
     },
 
     /* ===== 阅读器 ===== */
@@ -226,7 +374,13 @@ window.App = window.App || {};
       notify('chats');
       return chat;
     },
-    /** 发送问题：先检索证据片段，再模拟流式回答 */
+    /**
+     * 发送问题：真实调用后端 SSE 流式问答。
+     *
+     * 事件顺序：citations（先给出处）→ token（文本增量，多次）→ done（最终结果）
+     * 视图层不需要改：它只读 message.evidence 和 message.text，
+     * 这里在流式过程中持续更新这两个字段并 notify 即可。
+     */
     async ask(question) {
       const q = String(question || '').trim();
       if (!q || state.qa.thinking) return null;
@@ -237,26 +391,94 @@ window.App = window.App || {};
 
       chat.messages.push({ role: 'user', text: q, at: Date.now() });
       const answerMsg = {
-        role: 'assistant', text: '', streaming: true, evidence: [], thinking: true, at: Date.now(),
+        role: 'assistant',
+        text: '',
+        streaming: true,
+        evidence: [],
+        thinking: true,
+        at: Date.now(),
       };
       chat.messages.push(answerMsg);
       state.qa.thinking = true;
       notify('chats');
 
-      // ---- 1. RAG 检索：从 mock 知识库里挑最相关的片段 ----
-      await U.sleep(620);
-      const hits = App.rag.retrieve(q, state.qa.paperIds, state.qa.topK);
-      answerMsg.evidence = hits;
-      answerMsg.thinking = false;
-      notify('chats');
+      // 离线模式：没有后端时用内置检索与示范答案，界面仍可演示
+      if (!hasApi()) {
+        await U.sleep(400);
+        const offlineHits = App.rag.retrieve(q, state.qa.paperIds, state.qa.topK);
+        answerMsg.evidence = offlineHits;
+        answerMsg.thinking = false;
+        answerMsg.text = App.rag.presetAnswer(q)
+          || App.rag.compose(q, offlineHits, state.qa.scope);
+        answerMsg.streaming = false;
+        state.qa.thinking = false;
+        notify('chats');
+        return answerMsg;
+      }
 
-      // ---- 2. 生成回答（优先用内置的示范答案，否则用检索片段拼装） ----
-      const preset = App.rag.presetAnswer(q);
-      const body = preset || App.rag.compose(q, hits, state.qa.scope);
-      answerMsg.text = body;
-      answerMsg.streaming = false;
-      state.qa.thinking = false;
-      notify('chats');
+      await new Promise((resolve) => {
+        App.api.askStream(q, state.qa.topK, (event) => {
+          if (event.type === 'citations') {
+            // 先到的资料来源：让「检索命中 N 段」立刻显示出来
+            answerMsg.evidence = App.adapter.evidenceFromHits(
+              (event.snippets || []).map((s) => ({
+                chunk_id: s.chunk_id,
+                paper_id: s.paper_id,
+                citation: s.citation,
+                section_title: (s.citation || '').split('（')[0],
+                page_start: s.index ? 0 : 0,
+                text: s.text,
+                score: 0,
+              }))
+            );
+            answerMsg.thinking = false;
+            notify('chats');
+            return;
+          }
+
+          if (event.type === 'token') {
+            answerMsg.text += event.text;
+            answerMsg.thinking = false;
+            notify('chats');
+            return;
+          }
+
+          if (event.type === 'done') {
+            // done 里的 answer 是服务端净化过的：编造的引用编号已被移除，
+            // 因此这里用完整文本覆盖流式阶段显示的内容
+            answerMsg.text = event.answer;
+            answerMsg.evidence = App.adapter.evidenceFromHits(
+              (event.citations || []).map((c) => ({
+                chunk_id: c.chunk_id,
+                paper_id: c.paper_id,
+                citation: c.citation,
+                section_title: (c.citation || '').split('（')[0],
+                page_start: null,
+                text: c.text,
+                score: 1 / (c.index || 1),
+              }))
+            );
+            answerMsg.invalidMarks = event.invalid_marks || [];
+            answerMsg.refused = !!event.refused;
+            answerMsg.mode = event.mode;
+            answerMsg.streaming = false;
+            state.qa.thinking = false;
+            notify('chats');
+            resolve();
+            return;
+          }
+
+          if (event.type === 'error') {
+            answerMsg.text = '回答生成失败：' + (event.message || '未知错误');
+            answerMsg.streaming = false;
+            answerMsg.error = true;
+            state.qa.thinking = false;
+            notify('chats');
+            resolve();
+          }
+        });
+      });
+
       return answerMsg;
     },
     setQaScope(scope) {

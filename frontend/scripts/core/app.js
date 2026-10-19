@@ -300,13 +300,31 @@ window.App = window.App || {};
      5. 启动
      ========================================================================== */
   function boot() {
-    // 初始数据：文库载入 mock 数据
+    // 初始数据：先用演示数据把界面渲染出来，避免首屏空白。
+    // 随后异步从后端拉真实文库，成功则整体替换。
+    // 这样即使后端没起，界面仍可浏览（只是数据是演示用的）。
     App.store.state.papers = App.data.papers.slice();
     App.store.state.qa.paperIds = ['p-attention-v7'];
 
     buildShell();
     App.store.on(render);
     render();
+
+    // ---- 异步同步真实数据 ----
+    (async () => {
+      try {
+        const health = await App.api.health();
+        const papers = await App.store.actions.loadPapers();
+        if (papers.length > 0) {
+          App.store.state.qa.paperIds = [papers[0].id];
+          App.store.notify('papers');
+        }
+        App.ui.toast('已连接后端：' + (health.app || '服务')
+          + '，文库 ' + papers.length + ' 篇', 'ok', 2600);
+      } catch (err) {
+        App.ui.toast('未连接后端，当前为演示数据（' + err.message + '）', 'warn', 4000);
+      }
+    })();
 
     // 全局快捷键
     document.addEventListener('keydown', (e) => {
@@ -321,8 +339,6 @@ window.App = window.App || {};
         if (input) input.focus();
       }
     });
-
-    App.ui.toast('已载入 ' + App.store.state.papers.length + ' 篇演示论文', 'ok', 2600);
   }
 
   App.VIEWS = VIEWS;
