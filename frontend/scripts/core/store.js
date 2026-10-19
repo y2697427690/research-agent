@@ -35,6 +35,10 @@ window.App = window.App || {};
       activeAnchor: null,      // 当前定位到的章节锚点
       highlightCite: null,     // 当前高亮的引文编号
       selection: null,         // 划词选中的文本 { text, zh }
+      // 翻译进行中：null 或 { paperId, done, total }。
+      // 放在 state 里而不是组件内部，是因为阅读器是「状态驱动重绘」的，
+      // 只有状态变化才会重新渲染出进度徽标。
+      translating: null,
     },
 
     // ---- 问答 ----
@@ -85,9 +89,32 @@ window.App = window.App || {};
   const actions = {
     /* ===== 路由 ===== */
     go(route, params) {
+      // 离开阅读器时终止正在进行的翻译，避免用户在别的页面时后台还在花钱
+      if (route !== 'reader') actions.cancelTranslation();
       state.route = route;
       state.routeParams = params || {};
       notify('route');
+    },
+
+    /**
+     * 终止某篇论文正在进行的翻译。
+     *
+     * 实现方式是「标记 + 协作式退出」：翻译循环在每批开始前检查标记，
+     * 看到就停。当前那一批请求无法中断（后端已经发出去了），
+     * 但不会再发起新的一批——最多多等几秒，不会一直翻下去。
+     * 相比给每个请求加 AbortController，这种做法的代码量小得多，
+     * 代价只是可能多完成一批（约 20 块）。
+     */
+    cancelTranslation(paperId) {
+      const current = state.reader.translating;
+      const target = paperId || (current && current.paperId);
+      if (!target) return;
+      state.__translateCancel = state.__translateCancel || {};
+      state.__translateCancel[target] = true;
+      if (current && current.paperId === target) {
+        state.reader.translating = null;
+        notify('reader');
+      }
     },
 
     /* ===== 数据同步 ===== */
@@ -349,6 +376,8 @@ window.App = window.App || {};
       state.reader.activeAnchor = null;
       state.reader.highlightCite = null;
       state.reader.selection = null;
+      // 换论文时终止上一篇的翻译：用户在别的论文上，不必继续为旧论文花钱
+      actions.cancelTranslation();
       notify('reader');
       actions.go('reader', { paperId: id });
     },
@@ -366,39 +395,88 @@ window.App = window.App || {};
     },
 
     /**
-     * 确保这篇论文有译文（按需 + 缓存）。
-     * 后端已翻译过的块不会再翻，因此重复调用是安全的、几乎不花钱。
-     * batch 控制单次翻译多少块：太大请求会很久，太小用户要等很多轮。
+     * 确保这篇论文有完整译文（按需 + 缓存 + 自动续批）。
+     *
+     * 为什么循环分批而不是一次翻完：
+     *   一次请求翻上百块要几十秒，浏览器与代理容易超时；
+     *   分批后每批几秒就能返回，用户能边翻边看，中途失败也只损失一批。
+     * 为什么要循环到底：
+     *   只翻一批会让用户以为"只翻译了一章"——这正是之前的缺陷。
      */
     async ensureTranslation(paperId, batch) {
       if (!paperId || !hasApi()) return null;
-      // 只处理真实论文：演示论文的译文在 mock 数据里，不需要后端
-      const isReal = state.papers.some((p) => p.id === paperId);
-      if (!isReal) return null;
+      // 演示论文的译文在 mock 数据里，不需要后端。
+      // 判据用「是否来自演示数据集」，而不是「是否在 state.papers 里」——
+      // 后端不可用时 boot 会把演示数据放进 state.papers，
+      // 用后者判断会误把演示论文当成真实论文去请求后端。
+      const isMock = (App.data.papers || []).some((p) => p.id === paperId);
+      if (isMock) return null;
 
-      const doc = App.data && App.data.getDoc ? App.data.getDoc(paperId) : null;
-      if (doc && doc.isReal && doc.totalChunks > 0
-        && doc.translatedChunks >= doc.totalChunks) {
+      // 防止重复启动：用户连点几次"中英对照"不应并发发起多轮翻译
+      state.__translating = state.__translating || {};
+      if (state.__translating[paperId]) return null;
+
+      const first = App.data && App.data.getDoc ? App.data.getDoc(paperId) : null;
+      if (first && first.isReal && first.totalChunks > 0
+        && first.translatedChunks >= first.totalChunks) {
         return null;       // 已全部翻译，无需再请求
       }
 
+      const step = Math.max(5, batch || 20);
+      state.__translating[paperId] = true;
+      // 清掉上一次的取消标记，否则重新进入阅读器会立刻被判定为"已取消"
+      state.__translateCancel = state.__translateCancel || {};
+      state.__translateCancel[paperId] = false;
+
+      let last = null;
+      let cancelled = false;
+
       try {
-        const st = await App.api.translatePaper(paperId, { limit: batch || 20 });
-        if (st.translated > 0) {
-          App.ui.toast(
-            '已翻译 ' + st.translated + ' 段（'
-            + st.progress[1] + '/' + st.progress[0] + '）',
-            'ok', 2600
-          );
+        // 上限 40 轮 × 每轮 20 块 = 800 块，足够覆盖任何论文；
+        // 同时防止后端异常时无限循环
+        for (let round = 0; round < 40; round += 1) {
+          if (state.__translateCancel[paperId]) { cancelled = true; break; }
+
+          const st = await App.api.translatePaper(paperId, { limit: step });
+          last = st;
+
+          const total = st.progress[0];
+          const done = st.progress[1];
+
+          if (st.translated === 0) {
+            // 没有新内容：要么已翻完，要么出错（如额度/密钥问题）
+            if (done < total && st.errors.length) {
+              App.ui.toast('翻译中断：' + st.errors[0], 'warn', 4000);
+            }
+            break;
+          }
+
+          // 进度写进状态：译文面板据此显示「翻译中 40/164」徽标与提示条，
+          // 只弹 toast 的话用户不知道整体还有多少、也不知道会自动续
+          state.reader.translating = { paperId: paperId, done: done, total: total };
           if (App.data.invalidateDoc) App.data.invalidateDoc(paperId);
           notify('reader');
-        } else if (st.progress[0] > st.progress[1]) {
-          App.ui.toast('翻译未产生新内容：' + (st.errors[0] || '请稍后再试'), 'warn', 3000);
+
+          if (done >= total) break;
         }
-        return st;
+
+        if (cancelled) {
+          App.ui.toast('已停止翻译', 'warn', 2200);
+        } else if (last && last.progress[0] > 0 && last.progress[1] >= last.progress[0]) {
+          App.ui.toast('译文已就绪（共 ' + last.progress[1] + ' 段）', 'ok', 2600);
+        }
+        return last;
       } catch (err) {
         App.ui.toast('翻译失败：' + err.message, 'error');
         return null;
+      } finally {
+        state.__translating[paperId] = false;
+        // 结束（正常完成或取消）都要清掉进度，否则徽标会一直挂着
+        if (state.reader.translating && state.reader.translating.paperId === paperId) {
+          state.reader.translating = null;
+        }
+        if (App.data.invalidateDoc) App.data.invalidateDoc(paperId);
+        notify('reader');
       }
     },
 

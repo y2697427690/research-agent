@@ -122,8 +122,18 @@ APP_DEBUG=true
 ### 2.4 启动
 
 ```powershell
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --port 8000
 ```
+
+> ⚠️ **`--reload-dir app` 不是可选项，必须加。**
+>
+> `--reload` 默认监视**整个 backend 目录**，其中包含 `backend/data/`。
+> 而上传、解析、翻译都会写 `data/app.db` —— 文件一变，uvicorn 就重启进程，
+> 正在进行的请求被掐断，前端表现为「**无法连接后端服务**」，
+> 但健康检查又是正常的，很容易误判成服务没启动。
+>
+> 加上 `--reload-dir app` 后只监视代码目录：改代码仍然自动重载，
+> 写数据库不会再触发重启。
 
 | 地址 | 说明 |
 | --- | --- |

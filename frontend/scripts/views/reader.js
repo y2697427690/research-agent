@@ -76,11 +76,13 @@ window.App = window.App || {};
           <section class="rd-pane" id="pane-zh">
             <div class="rd-pane-head">
               <span class="badge badge-brand">${mode === 'bilingual' ? '中文译文' : '全文翻译'}</span>
+              ${U.raw(translateBadge(st, paperId))}
               <span class="muted tiny">公式 / 代码保留英文原文</span>
               <div class="spacer"></div>
               <span class="muted tiny">机器翻译 · 仅供参考</span>
             </div>
             <div class="rd-pane-body" id="body-zh" data-pane="zh">
+              ${U.raw(translateHint(st, paperId))}
               ${U.raw(doc ? blocksHtml(doc.blocks, 'zh') : placeholderDoc(paper))}
             </div>
           </section>`) : ''}
@@ -202,6 +204,46 @@ window.App = window.App || {};
   /* ==========================================================================
      4. 正文块渲染（按语言）
      ========================================================================== */
+  /**
+   * 译文面板标题旁的进度徽标。
+   * 翻译是按批自动续的，用户需要知道"正在进行"与"已完成多少"，
+   * 否则译文区域空白会被误认为功能卡住。
+   */
+  function translateBadge(st, paperId) {
+    const t = st.reader.translating;
+    if (!t || t.paperId !== paperId) return '';
+    const pct = t.total ? Math.round((t.done / t.total) * 100) : 0;
+    return h`<span class="badge badge-outline mono">翻译中 ${t.done}/${t.total} · ${pct}%</span>`;
+  }
+
+  /**
+   * 译文面板顶部的提示条。
+   * 三种状态：
+   *   翻译中   → 提示会自动续翻，可点返回终止
+   *   部分已译 → 提示还剩多少段，点击继续
+   *   已完成   → 不显示
+   */
+  function translateHint(st, paperId) {
+    const t = st.reader.translating;
+    if (t && t.paperId === paperId) {
+      return h`
+        <div class="rd-translate-hint">
+          <span class="dot-pulse"></span>
+          正在翻译（${t.done}/${t.total}），完成后自动显示中文；离开本页会停止翻译。
+        </div>`;
+    }
+    const doc = App.data && App.data.getDoc ? App.data.getDoc(paperId) : null;
+    if (doc && doc.isReal && doc.totalChunks > 0
+      && doc.translatedChunks < doc.totalChunks) {
+      return h`
+        <div class="rd-translate-hint">
+          已翻译 ${doc.translatedChunks}/${doc.totalChunks} 段，尚未完成。
+          <button class="btn btn-sm btn-ghost" data-action="continue-translate">继续翻译</button>
+        </div>`;
+    }
+    return '';
+  }
+
   function blocksHtml(blocks, lang) {
     return App.ui.Out(blocks.map((b) => blockHtml(b, lang)).join(''));
   }

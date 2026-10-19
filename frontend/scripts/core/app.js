@@ -165,6 +165,9 @@ window.App = window.App || {};
       case 'goto-publication': App.views.reader.gotoPublication(data.id); break;
       case 'open-ref-paper': S.openPaper(data.id); break;
       case 'translate-selection': App.views.reader.translateSelection(); break;
+      case 'continue-translate':
+        S.ensureTranslation(App.store.state.currentPaperId);
+        break;
       case 'clear-selection': App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: null }) }, 'reader'); break;
       case 'copy-text': App.views.reader.copy(el); break;
 

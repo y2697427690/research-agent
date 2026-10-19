@@ -54,10 +54,18 @@ class Settings(BaseSettings):
     max_files_per_request: int = 10
 
     # ---------- CORS ----------
-    # 前端用 file:// 直接打开时，浏览器发送的 Origin 是字符串 "null"，必须显式允许
+    # 前端用 file:// 直接打开时，浏览器发送的 Origin 是字符串 "null"，必须显式允许。
+    # 注意 localhost 与 127.0.0.1 在浏览器看来是**两个不同的来源**，
+    # 只配置其中一个会导致「用另一个地址打开时所有请求被 CORS 拦下」，
+    # 表现为前端提示「无法连接后端服务」，很容易误判成服务没起。
+    # 因此本地开发常用的几种地址都列上。
     allowed_origins: list[str] = [
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
         "http://127.0.0.1:8080",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
         "null",
     ]
 

@@ -206,6 +206,36 @@
 #body-en { font-family: var(--font-en); color: var(--text-1); }
 #body-zh { color: var(--text-0); }
 
+/* ---- 译文面板的翻译进度提示 ----
+   翻译是按批自动续的，用户需要明确知道「正在进行」与「还剩多少」，
+   否则空白的译文区域会被误认为功能卡住。 */
+.rd-translate-hint {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand, #6ea8fe);
+  border-radius: var(--r-sm, 6px);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+/* 呼吸圆点：不改颜色也能表达"正在进行"，比转圈更轻量 */
+.dot-pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--brand, #6ea8fe);
+  flex-shrink: 0;
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot-pulse { animation: none; opacity: 0.8; }
+}
+
 /* ---- 正文排版元素 ---- */
 .doc-h1 {
   font-size: calc(19px * var(--reader-zoom));
