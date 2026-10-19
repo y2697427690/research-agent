@@ -153,8 +153,17 @@ window.App = window.App || {};
     parseState(id) { return get('/papers/' + encodeURIComponent(id) + '/parse'); },
 
     /** 取论文正文分块（阅读器用来渲染真实正文） */
-    paperChunks(id) {
-      return get('/papers/' + encodeURIComponent(id) + '/chunks');
+    paperChunks(id, lang) {
+      return get('/papers/' + encodeURIComponent(id) + '/chunks?lang=' + (lang || 'zh'));
+    },
+
+    /**
+     * 为论文生成中文译文（按需调用，结果在后端持久化）。
+     * limit 控制本次翻译多少块：分批推进可避免单次请求持续数分钟。
+     */
+    translatePaper(id, opts) {
+      const body = Object.assign({ limit: 20, concurrency: 4 }, opts || {});
+      return postJson('/papers/' + encodeURIComponent(id) + '/translate', body);
     },
 
     /* ---- 向量化 ---- */

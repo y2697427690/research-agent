@@ -29,9 +29,10 @@ async def lifespan(app: FastAPI):
     logger.info("启动%s v%s",settings.app_name,settings.app_version)
 
     #必须导入模型模块，Base.metadata才知道有哪些表，否则create_all建不出来东西
+    #新增模型时务必同步加到这里，否则表不会被创建且不报错（踩过两次）
     from app.db.base import Base
     from app.db.session import engine
-    from app.models import chunk, paper  # noqa: F401
+    from app.models import chunk, paper, translation  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

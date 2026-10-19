@@ -352,7 +352,56 @@ window.App = window.App || {};
       notify('reader');
       actions.go('reader', { paperId: id });
     },
-    setReaderMode(mode) { state.reader.mode = mode; notify('reader'); },
+    /**
+     * 切换阅读模式。
+     * 切到需要译文的模式（双语/纯译文）时，若当前是真实论文且还没译文，
+     * 自动按批触发翻译。演示论文自带译文，不会走到这里。
+     */
+    async setReaderMode(mode) {
+      state.reader.mode = mode;
+      notify('reader');
+      if (mode !== 'original') {
+        await actions.ensureTranslation(state.currentPaperId || state.routeParams.paperId);
+      }
+    },
+
+    /**
+     * 确保这篇论文有译文（按需 + 缓存）。
+     * 后端已翻译过的块不会再翻，因此重复调用是安全的、几乎不花钱。
+     * batch 控制单次翻译多少块：太大请求会很久，太小用户要等很多轮。
+     */
+    async ensureTranslation(paperId, batch) {
+      if (!paperId || !hasApi()) return null;
+      // 只处理真实论文：演示论文的译文在 mock 数据里，不需要后端
+      const isReal = state.papers.some((p) => p.id === paperId);
+      if (!isReal) return null;
+
+      const doc = App.data && App.data.getDoc ? App.data.getDoc(paperId) : null;
+      if (doc && doc.isReal && doc.totalChunks > 0
+        && doc.translatedChunks >= doc.totalChunks) {
+        return null;       // 已全部翻译，无需再请求
+      }
+
+      try {
+        const st = await App.api.translatePaper(paperId, { limit: batch || 20 });
+        if (st.translated > 0) {
+          App.ui.toast(
+            '已翻译 ' + st.translated + ' 段（'
+            + st.progress[1] + '/' + st.progress[0] + '）',
+            'ok', 2600
+          );
+          if (App.data.invalidateDoc) App.data.invalidateDoc(paperId);
+          notify('reader');
+        } else if (st.progress[0] > st.progress[1]) {
+          App.ui.toast('翻译未产生新内容：' + (st.errors[0] || '请稍后再试'), 'warn', 3000);
+        }
+        return st;
+      } catch (err) {
+        App.ui.toast('翻译失败：' + err.message, 'error');
+        return null;
+      }
+    },
+
     setReaderScale(scale) { state.reader.scale = scale; notify('reader'); },
     toggleSyncScroll() { state.reader.syncScroll = !state.reader.syncScroll; notify('reader'); },
     /** 点击 [11] 这类引文角标：高亮并跳到参考文献 */

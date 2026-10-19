@@ -1,4 +1,4 @@
-﻿"""论文相关接口。
+"""论文相关接口。
 
 本层只负责 HTTP：解析请求、调用 service、组装响应、映射错误。
 不写 SQL，也不做业务判断。
@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.exceptions import (
     EmbeddingUnavailable,
     InvalidRequest,
+    LLMUnavailable,
     NotFound,
     UploadTooLarge,
 )
@@ -20,7 +21,13 @@ from app.core.logging import get_logger
 from app.db.session import SessionLocal, get_db
 from app.models.chunk import Chunk
 from app.models.paper import Paper
-from app.schemas.chunk import ChunkOut, ChunksResponse
+from app.models.translation import ChunkTranslation
+from app.schemas.chunk import (
+    ChunkOut,
+    ChunksResponse,
+    TranslateRequest,
+    TranslateResponse,
+)
 from app.schemas.common import Ok, Page
 from app.schemas.paper import (
     DuplicateInfo,
@@ -31,7 +38,12 @@ from app.schemas.paper import (
     UploadResponse,
 )
 from app.schemas.search import EmbedRequest, EmbedResponse
-from app.services import chunk_service, paper_service, parser_service
+from app.services import (
+    chunk_service,
+    paper_service,
+    parser_service,
+    translate_service,
+)
 from app.services.dedupe import DuplicateVerdict
 
 router = APIRouter(prefix="/papers", tags=["论文"])
@@ -339,9 +351,11 @@ async def delete_paper(
 
 @router.get("/{paper_id}/chunks", response_model=ChunksResponse, summary="论文正文分块")
 async def list_chunks(
-    paper_id: str, db: AsyncSession = Depends(get_db)
+    paper_id: str,
+    lang: str = Query("zh", description="要附带译文的目标语言"),
+    db: AsyncSession = Depends(get_db),
 ) -> ChunksResponse:
-    """按序号返回这篇论文的全部分块。
+    """按序号返回这篇论文的全部分块（可附带译文）。
 
     前端阅读器用它按章节渲染真实正文。返回的是检索用的块
     （约 700 字符、相邻块带重叠），因此相邻块可能重复少量文字。
@@ -350,29 +364,83 @@ async def list_chunks(
     if paper is None:
         raise NotFound("论文不存在", {"paper_id": paper_id})
 
+    # 左连接取译文：没有译文的块 text_zh 为 None，前端据此决定显示原文
     rows = (await db.execute(
-        select(Chunk)
+        select(Chunk, ChunkTranslation.text)
+        .outerjoin(
+            ChunkTranslation,
+            (ChunkTranslation.chunk_id == Chunk.id)
+            & (ChunkTranslation.lang == lang),
+        )
         .where(Chunk.paper_id == paper_id)
         .order_by(Chunk.chunk_index)
-    )).scalars().all()
+    )).all()
+
+    chunks = [
+        ChunkOut(
+            id=c.id,
+            chunk_index=c.chunk_index,
+            text=c.text,
+            text_zh=zh,
+            char_count=c.char_count,
+            section_title=c.section_title,
+            level=c.level,
+            page_start=c.page_start,
+            page_end=c.page_end,
+            embedded=c.embedding is not None,
+        )
+        for c, zh in rows
+    ]
 
     return ChunksResponse(
         paper_id=paper_id,
         page_count=paper.page_count,
-        chunks=[
-            ChunkOut(
-                id=c.id,
-                chunk_index=c.chunk_index,
-                text=c.text,
-                char_count=c.char_count,
-                section_title=c.section_title,
-                level=c.level,
-                page_start=c.page_start,
-                page_end=c.page_end,
-                embedded=c.embedding is not None,
-            )
-            for c in rows
-        ],
+        total_chunks=len(chunks),
+        translated_chunks=sum(1 for c in chunks if c.text_zh),
+        chunks=chunks,
+    )
+
+
+@router.post(
+    "/{paper_id}/translate", response_model=TranslateResponse, summary="生成中文译文"
+)
+async def translate_paper(
+    paper_id: str,
+    payload: TranslateRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> TranslateResponse:
+    """为尚未翻译的分块生成中文译文（按需调用，结果持久化）。
+
+    与解析分开：翻译按量计费，只有用户真正需要对照阅读时才调用。
+    支持 limit 分批推进，避免单次请求持续数分钟。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    req = payload or TranslateRequest()
+    stats = await translate_service.translate_paper(
+        db, paper_id,
+        lang=req.lang, limit=req.limit, concurrency=req.concurrency,
+    )
+    await db.commit()
+
+    if stats.total == 0 and stats.errors:
+        # 没有可翻译的块且存在错误，说明是配置问题，明确告知
+        raise LLMUnavailable(stats.errors[0])
+
+    total, done = await translate_service.count_progress(db, paper_id, req.lang)
+
+    return TranslateResponse(
+        paper_id=paper_id,
+        lang=req.lang,
+        total=stats.total,
+        translated=stats.translated,
+        failed=stats.failed,
+        chars=stats.chars,
+        model=stats.model,
+        progress=(total, done),
+        errors=stats.errors,
     )
 
 

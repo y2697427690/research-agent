@@ -191,7 +191,7 @@ window.App = window.App || {};
           id: id,
           type: 'h2',
           en: section,
-          zh: '',
+          zh: section,          // 章节名通常已是英文，双语模式下两侧一致
           page: c.page_start,
         });
         toc.push({ id: id, title: section, level: 2 });
@@ -200,7 +200,9 @@ window.App = window.App || {};
         id: 'b' + c.chunk_index,
         type: 'p',
         en: c.text,
-        zh: '',
+        // 译文来自后端（chunk_translations 表），未翻译时为空字符串：
+        // 双语模式下右侧留空，而不是显示英文冒充中文
+        zh: c.text_zh || '',
         page: c.page_start,
         pageEnd: c.page_end,
         chunkId: c.id,
@@ -211,6 +213,8 @@ window.App = window.App || {};
       paperId: paperId,
       isReal: true,
       pageCount: resp.page_count,
+      totalChunks: resp.total_chunks,
+      translatedChunks: resp.translated_chunks || 0,
       blocks: blocks,
       toc: toc,
     };
