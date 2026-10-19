@@ -155,6 +155,19 @@ class BM25Index:
         """词表大小，便于观察索引规模。"""
         return len(self.postings)
 
+    @property
+    def max_idf(self) -> float:
+        """本语料下一个词能达到的最大 IDF（即只出现在一个块中的词）。
+
+        用于把 IDF 换算成「相对区分度」：IDF 的绝对值与语料规模强相关，
+        只有 2 个块时上限约 0.69，而 5 万个块时上限可达 10 以上，
+        因此任何绝对阈值都会在小语料或大语料上失效。
+        """
+        n = len(self.chunks)
+        if n <= 1:
+            return 0.0
+        return math.log((n - 1 + 0.5) / (1 + 0.5) + 1.0)
+
     # ------------------------------------------------------------ 打分
 
     def idf(self, term: str) -> float:

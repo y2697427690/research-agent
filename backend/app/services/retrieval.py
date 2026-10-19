@@ -1,4 +1,4 @@
-"""统一检索入口：混合检索（BM25 + 向量 + RRF）+ 自动降级。
+﻿"""统一检索入口：混合检索（BM25 + 向量 + RRF）+ 自动降级。
 
 设计要点：
 1. 索引缓存
@@ -37,6 +37,20 @@ logger = logging.getLogger(__name__)
 # 让 RRF 有足够的重叠空间——两路都靠前的块才会浮上来。
 CANDIDATE_MULTIPLIER = 3
 MIN_CANDIDATES = 20
+
+# 关键词检索的最低相对区分度：首位命中词的最大 IDF / 本语料最大 IDF。
+# 低于该比例说明 BM25 只匹配到「到处都有」的常见词（如一篇论文里反复出现的
+# 模型名），此时它给出的名次是噪声，进入 RRF 会把向量检索的正确答案挤下去。
+# 实测案例：问句含「Transformer」时，BM25 用这个通用词凑出 20 条无关候选，
+# 正确答案（3.1 节）被从第 1 名挤到第 5 名；跳过该路后回到第 1 名。
+# 用比例而非绝对值，是因为 IDF 的量级与语料规模强相关
+# （2 个块时上限约 0.69，上万块时可达 10 以上），绝对阈值必然失效。
+MIN_INFORMATIVE_IDF_RATIO = 0.5
+
+# 语料规模小于此值时不做上面的判断。
+# 原因：块数很少时，任何词都会出现在相当比例的块中，df 分布没有统计意义，
+# 相对区分度会普遍偏低，导致本来有效果的关键词检索被误判为噪声。
+MIN_CORPUS_FOR_IDF_FILTER = 20
 
 
 @dataclass
@@ -189,11 +203,30 @@ async def retrieve(
     candidate_k = max(top_k * CANDIDATE_MULTIPLIER, MIN_CANDIDATES)
 
     rankings: dict[str, list[str]] = {}
-    bm25_hits = bm25.search(query, top_k=candidate_k)
-    rankings["bm25"] = [h.chunk.chunk_id for h in bm25_hits]
-
     degraded: str | None = None
     vector_count = 0
+
+    # 关键词检索的信息量判断。
+    # 见 MIN_INFORMATIVE_IDF_RATIO 的说明：当一轮 BM25 的首位命中词也过于常见时，
+    # 它给出的名次基本是噪声，进入 RRF 反而会把向量检索的正确答案挤下去。
+    bm25_hits = bm25.search(query, top_k=candidate_k)
+    if bm25_hits:
+        top_idf = max(
+            (bm25.idf(t) for t in bm25_hits[0].matched_terms), default=0.0
+        )
+        ceiling = bm25.max_idf
+        ratio = (top_idf / ceiling) if ceiling > 0 else 0.0
+        if len(bm25) < MIN_CORPUS_FOR_IDF_FILTER:
+            # 语料太小，统计量不可靠，直接保留关键词检索结果
+            ratio = 1.0
+        if ratio >= MIN_INFORMATIVE_IDF_RATIO:
+            rankings["bm25"] = [h.chunk.chunk_id for h in bm25_hits]
+        else:
+            degraded = (
+                f"关键词检索仅命中高频词（最高 IDF {top_idf:.2f}，"
+                f"相对区分度 {ratio:.0%}），已跳过该路"
+            )
+            logger.info("跳过 BM25 结果: %s", degraded)
 
     if allow_vector and len(vector) > 0 and embedding.is_available():
         try:
@@ -209,7 +242,15 @@ async def retrieve(
     elif allow_vector and not embedding.is_available():
         degraded = "未配置嵌入模型（APP_EMBEDDING_API_KEY 为空）"
 
-    mode = "hybrid" if "vector" in rankings else "bm25"
+    if not rankings:
+        return RetrievalResult(query=query, mode="empty", degraded_reason=degraded)
+
+    if "bm25" in rankings and "vector" in rankings:
+        mode = "hybrid"
+    elif "vector" in rankings:
+        mode = "vector"
+    else:
+        mode = "bm25"
     fused = rrf_fuse(rankings, top_k=top_k)
 
     hits: list[RetrievalHit] = []
@@ -236,5 +277,5 @@ async def retrieve(
         hits=hits,
         bm25_candidates=len(rankings.get("bm25", [])),
         vector_candidates=vector_count,
-        degraded_reason=degraded if mode == "bm25" else None,
+        degraded_reason=degraded,
     )

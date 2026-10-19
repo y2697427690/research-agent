@@ -25,6 +25,17 @@ _NOISE_LINE = re.compile(
     r"^\s*(?:arXiv:\d{4}\.\d{4,5}v\d+\s*\[[^\]]*\]\s*.*|arXiv:\d{4}\.\d{4,5}v\d+|\d{1,3})\s*$"
 )
 
+# 图注/边栏标签行，形如 "Encoder:"、"Decoder:"、"Scaled Dot-Product Attention:"。
+# 这类文字在 PDF 里是图中文字的独立文本块，但按 y 坐标排序时会落在正文两行之间，
+# 拼成一整段后就插进了句子中间，把连续短语劈开。实测原句：
+#     The encoder is composed of a stack of N = 6 identical layers. Each layer has two
+#     Encoder:                          ← 图 1 的侧边标签
+#     sub-layers. The first is a multi-head self-attention mechanism...
+# 拼段后变成「Each layer has two Encoder: sub-layers.」，
+# 导致「two sub-layers」这个关键短语检索不到，模型看到的语义也是破碎的。
+# 判据：独立成行、以冒号结尾、长度很短（图上标签不会很长）。
+_LABEL_LINE = re.compile(r"^\s*[A-Z][A-Za-z0-9 \-/&]{0,28}:\s*$")
+
 # 默认参数：目标 700 字符、重叠 120 字符
 DEFAULT_TARGET_CHARS = 700
 DEFAULT_OVERLAP_CHARS = 120
@@ -116,12 +127,13 @@ class ChunkStats:
     skipped_reference_chunks: int = 0   # 被识别为文献列表而跳过的块数
 
 
+# 统计用：图注标签行的删除数单独计数，便于观察这类噪声的实际规模
 def clean_page_text(text: str) -> tuple[str, int]:
-    """去掉噪声行（arXiv 水印、纯页码）。返回 (清洗后文本, 去掉的行数)。"""
+    """去掉噪声行（arXiv 水印、纯页码、图注标签）。返回 (清洗后文本, 去掉的行数)。"""
     kept: list[str] = []
     removed = 0
     for line in text.splitlines():
-        if _NOISE_LINE.match(line):
+        if _NOISE_LINE.match(line) or _LABEL_LINE.match(line):
             removed += 1
             continue
         kept.append(line)

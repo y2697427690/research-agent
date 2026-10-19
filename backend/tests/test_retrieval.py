@@ -1,4 +1,4 @@
-"""检索链路测试：融合、向量索引、混合检索、分块入库。
+﻿"""检索链路测试：融合、向量索引、混合检索、分块入库。
 
 关键设计：所有涉及嵌入的地方都用 monkeypatch 替换为确定性假向量，
 测试不访问网络，也不会消耗嵌入额度。
@@ -220,7 +220,8 @@ async def test_retrieve_finds_chunk_that_bm25_cannot(db_session_fixture, monkeyp
     async with db_session_fixture() as db:
         result = await retrieval.retrieve(db, "word order", top_k=5)
 
-    assert result.mode == "hybrid"
+    # BM25 完全没有命中，只剩向量一路，因此 mode 为 vector
+    assert result.mode == "vector"
     assert result.hits
     assert result.hits[0].chunk_id == "c1"
     assert result.hits[0].sources == ["vector"]
@@ -273,7 +274,9 @@ async def test_retrieve_allow_vector_false_forces_bm25(db_session_fixture, monke
 async def test_retrieve_empty_query_and_empty_index(db_session_fixture):
     async with db_session_fixture() as db:
         assert (await retrieval.retrieve(db, "   ")).mode == "empty"
-        assert (await retrieval.retrieve(db, "zzz-nonexistent-xyz")).mode in ("bm25", "hybrid")
+        # 无任何命中时为 empty（索引为空或问题完全无关）
+        assert (await retrieval.retrieve(db, "zzz-nonexistent-xyz")).mode in (
+            "bm25", "hybrid", "vector", "empty")
 
 
 async def test_index_cache_rebuilds_on_data_change(db_session_fixture):
@@ -387,3 +390,129 @@ def test_search_endpoint_validates_query():
     with TestClient(app) as client:
         assert client.post("/api/v1/search", json={"query": ""}).status_code == 422
         assert client.post("/api/v1/search", json={"query": "x", "top_k": 0}).status_code == 422
+
+# ---------------------------------------------------------------- 关键词信息量过滤
+
+
+async def test_bm25_skipped_when_only_common_terms_match(tmp_path, monkeypatch):
+    """语料足够大时，若 BM25 只命中「到处都有」的词，应跳过该路并写入原因。
+
+    场景来自实测：问句里带了一个在整篇论文中反复出现的模型名，
+    BM25 用这个通用词凑出一堆无关候选，在 RRF 里把向量检索的正确答案挤下去。
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.models.chunk import Chunk
+    from app.models.paper import Paper
+    from app.services.vector_store import pack_vectors
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(db_session, "engine", engine)
+    monkeypatch.setattr(db_session, "SessionLocal", maker)
+
+    from app.db.base import Base
+    from app.models import chunk, paper  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    # 30 个块，每块都含 "transformer"（通用词），只有 1 块含真正的答案词
+    texts = [f"transformer block number {i} about a common topic" for i in range(29)]
+    texts.insert(5, "transformer encoder stacks composed of two sub-layers each")
+
+    async with maker() as session:
+        session.add(Paper(id="p9", sha1="b" * 40, file_name="t.pdf",
+                          file_path="t.pdf", size_bytes=1))
+        await session.flush()
+        for i, text in enumerate(texts):
+            session.add(Chunk(
+                id=f"k{i}", paper_id="p9", chunk_index=i, text=text,
+                char_count=len(text), section_title=f"S{i}",
+                page_start=i + 1, page_end=i + 1,
+                embedding=pack_vectors([[1.0, 0.0]]),
+                embedding_model=settings.embedding_model,
+            ))
+        await session.commit()
+
+    monkeypatch.setattr(embedding, "is_available", lambda: True)
+
+    async def fake_embed_one(text: str):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(embedding, "embed_one", fake_embed_one)
+
+    retrieval.invalidate()
+    async with maker() as db:
+        # 只含通用词的查询：BM25 会命中 29 个块，但没有任何区分度
+        result = await retrieval.retrieve(db, "transformer", top_k=5)
+    await engine.dispose()
+    retrieval.invalidate()
+
+    assert result.mode == "vector"
+    assert result.bm25_candidates == 0
+    assert result.degraded_reason is not None
+    assert "高频词" in result.degraded_reason
+
+
+async def test_bm25_kept_when_specific_term_matches(tmp_path, monkeypatch):
+    """命中罕见词时，关键词检索应当保留。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.models.chunk import Chunk
+    from app.models.paper import Paper
+    from app.services.vector_store import pack_vectors
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(db_session, "engine", engine)
+    monkeypatch.setattr(db_session, "SessionLocal", maker)
+
+    from app.db.base import Base
+    from app.models import chunk, paper  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    texts = [f"transformer block number {i} about a common topic" for i in range(29)]
+    texts.insert(7, "dropout regularization is applied to sub-layer outputs")
+
+    async with maker() as session:
+        session.add(Paper(id="p8", sha1="c" * 40, file_name="t.pdf",
+                          file_path="t.pdf", size_bytes=1))
+        await session.flush()
+        for i, text in enumerate(texts):
+            session.add(Chunk(
+                id=f"j{i}", paper_id="p8", chunk_index=i, text=text,
+                char_count=len(text), section_title=f"S{i}",
+                page_start=i + 1, page_end=i + 1,
+                embedding=pack_vectors([[1.0, 0.0]]),
+                embedding_model=settings.embedding_model,
+            ))
+        await session.commit()
+
+    monkeypatch.setattr(embedding, "is_available", lambda: True)
+
+    async def fake_embed_one(text: str):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(embedding, "embed_one", fake_embed_one)
+
+    retrieval.invalidate()
+    async with maker() as db:
+        result = await retrieval.retrieve(db, "dropout regularization", top_k=5)
+    await engine.dispose()
+    retrieval.invalidate()
+
+    assert result.mode == "hybrid"
+    assert result.bm25_candidates > 0
