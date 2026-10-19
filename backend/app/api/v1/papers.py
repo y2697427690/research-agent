@@ -1,4 +1,4 @@
-"""论文相关接口。
+﻿"""论文相关接口。
 
 本层只负责 HTTP：解析请求、调用 service、组装响应、映射错误。
 不写 SQL，也不做业务判断。
@@ -18,7 +18,9 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.db.session import SessionLocal, get_db
+from app.models.chunk import Chunk
 from app.models.paper import Paper
+from app.schemas.chunk import ChunkOut, ChunksResponse
 from app.schemas.common import Ok, Page
 from app.schemas.paper import (
     DuplicateInfo,
@@ -330,6 +332,48 @@ async def delete_paper(
         raise NotFound("论文不存在", {"paper_id": paper_id})
     await db.commit()
     return Ok(ok=True)
+
+
+# ---------------------------------------------------------------- 正文分块
+
+
+@router.get("/{paper_id}/chunks", response_model=ChunksResponse, summary="论文正文分块")
+async def list_chunks(
+    paper_id: str, db: AsyncSession = Depends(get_db)
+) -> ChunksResponse:
+    """按序号返回这篇论文的全部分块。
+
+    前端阅读器用它按章节渲染真实正文。返回的是检索用的块
+    （约 700 字符、相邻块带重叠），因此相邻块可能重复少量文字。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    rows = (await db.execute(
+        select(Chunk)
+        .where(Chunk.paper_id == paper_id)
+        .order_by(Chunk.chunk_index)
+    )).scalars().all()
+
+    return ChunksResponse(
+        paper_id=paper_id,
+        page_count=paper.page_count,
+        chunks=[
+            ChunkOut(
+                id=c.id,
+                chunk_index=c.chunk_index,
+                text=c.text,
+                char_count=c.char_count,
+                section_title=c.section_title,
+                level=c.level,
+                page_start=c.page_start,
+                page_end=c.page_end,
+                embedded=c.embedding is not None,
+            )
+            for c in rows
+        ],
+    )
 
 
 # ---------------------------------------------------------------- 向量化

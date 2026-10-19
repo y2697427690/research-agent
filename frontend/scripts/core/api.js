@@ -152,6 +152,11 @@ window.App = window.App || {};
     /** 后台解析模式下轮询这个接口 */
     parseState(id) { return get('/papers/' + encodeURIComponent(id) + '/parse'); },
 
+    /** 取论文正文分块（阅读器用来渲染真实正文） */
+    paperChunks(id) {
+      return get('/papers/' + encodeURIComponent(id) + '/chunks');
+    },
+
     /* ---- 向量化 ---- */
     embedPaper(id, limit) {
       return postJson('/papers/' + encodeURIComponent(id) + '/embed',

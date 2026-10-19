@@ -157,5 +157,119 @@ window.App = window.App || {};
     splitAuthors,
     splitKeywords,
     statusOf,
+    docFromChunks,
+    installDataBridge,
   };
+
+  /* ---------------- 阅读器数据桥 ----------------
+     阅读器（views/reader.js）调用 App.data.getPaper / getDoc 取数据，
+     而这两个函数只认演示数据。这里在演示数据之上做一层桥接：
+       · getPaper：演示数据里没有的 id，从真实文库（store.state.papers）里找
+       · getDoc  ：演示数据里没有的正文，用后端分块拼出来
+     这样 reader.js 一行都不用改，两种数据源可以并存：
+     演示论文看完整（含译文/图表），真实论文看真实正文。
+     ------------------------------------------------------------------ */
+
+  /**
+   * 用后端分块拼出阅读器需要的 doc 结构。
+   *
+   * 说明：块的边界由检索分块策略决定（约 700 字符、相邻带重叠），
+   * 所以相邻段落可能重复少量文字——这是为检索召回率做的取舍。
+   * 真实论文暂不提供中文译文，zh 留空（见已知问题 F-03）。
+   */
+  function docFromChunks(resp, paperId) {
+    const blocks = [];
+    const toc = [];
+    let currentSection = null;
+
+    (resp.chunks || []).forEach((c, i) => {
+      const section = c.section_title || '正文';
+      if (section !== currentSection) {
+        currentSection = section;
+        const id = 'sec-' + i;
+        blocks.push({
+          id: id,
+          type: 'h2',
+          en: section,
+          zh: '',
+          page: c.page_start,
+        });
+        toc.push({ id: id, title: section, level: 2 });
+      }
+      blocks.push({
+        id: 'b' + c.chunk_index,
+        type: 'p',
+        en: c.text,
+        zh: '',
+        page: c.page_start,
+        pageEnd: c.page_end,
+        chunkId: c.id,
+      });
+    });
+
+    return {
+      paperId: paperId,
+      isReal: true,
+      pageCount: resp.page_count,
+      blocks: blocks,
+      toc: toc,
+    };
+  }
+
+  /** 安装数据桥（在 store 就绪后调用一次） */
+  function installDataBridge() {
+    if (!App.data || !App.store) return false;
+    if (App.data.__bridged) return true;
+    App.data.__bridged = true;
+
+    const rawGetDoc = App.data.getDoc.bind(App.data);
+    const rawGetPaper = App.data.getPaper.bind(App.data);
+
+    // ---- 论文：演示数据优先，找不到则查真实文库 ----
+    App.data.getPaper = function (paperId) {
+      const fromMock = rawGetPaper(paperId);
+      if (fromMock) return fromMock;
+      const papers = (App.store.state && App.store.state.papers) || [];
+      return papers.find((p) => p.id === paperId) || null;
+    };
+
+    // ---- 正文：演示数据优先，找不到则用后端分块（异步加载 + 缓存）----
+    const docs = {};      // paperId → doc | 'loading' | null
+
+    App.data.getDoc = function (paperId) {
+      const fromMock = rawGetDoc(paperId);
+      if (fromMock) return fromMock;
+      if (!paperId) return null;
+
+      if (docs[paperId] !== undefined) {
+        return docs[paperId] === 'loading' ? null : docs[paperId];
+      }
+
+      // 后端不可用时不发起请求，避免控制台刷错误
+      if (!App.api || typeof App.api.paperChunks !== 'function') return null;
+
+      docs[paperId] = 'loading';
+      App.api.paperChunks(paperId)
+        .then((resp) => {
+          docs[paperId] = docFromChunks(resp, paperId);
+          App.store.notify('reader');
+        })
+        .catch((err) => {
+          docs[paperId] = null;
+          if (App.ui && App.ui.toast) {
+            App.ui.toast('加载正文失败：' + err.message, 'error');
+          }
+          App.store.notify('reader');
+        });
+
+      // 首次调用返回 null，视图显示「暂无正文」，数据到达后 notify 会重绘
+      return null;
+    };
+
+    App.data.invalidateDoc = function (paperId) {
+      delete docs[paperId];
+    };
+
+    return true;
+  }
 })(window.App);

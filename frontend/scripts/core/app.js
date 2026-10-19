@@ -310,6 +310,12 @@ window.App = window.App || {};
     App.store.on(render);
     render();
 
+    // 安装阅读器数据桥：让 getPaper/getDoc 能找到真实文库与后端分块。
+    // 必须在 store 与 api 都就绪后调用。
+    if (App.adapter && typeof App.adapter.installDataBridge === 'function') {
+      App.adapter.installDataBridge();
+    }
+
     // ---- 异步同步真实数据 ----
     (async () => {
       try {
