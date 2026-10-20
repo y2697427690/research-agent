@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    adapter.js — 后端数据 → 视图数据的翻译层
    ----------------------------------------------------------------------------
    为什么需要这一层：
@@ -55,6 +55,19 @@ window.App = window.App || {};
     return 'queued';
   }
 
+  /** 从 arXiv 编号推导年份：编号前两位是年份，后两位是月份。
+   *  例：1706.03762 → 2017；9912.1234 → 1999。
+   *  解析器不提取年份（年份常出现在版权行等位置，不可靠），
+   *  而 arXiv 编号本身就编码了提交年月，用它补年份既准确又免费。
+   */
+  function yearFromArxiv(arxivId) {
+    const m = String(arxivId || '').match(/^(\d{2})(\d{2})\./);
+    if (!m) return null;
+    const yy = parseInt(m[1], 10);
+    // arXiv 从 1991 年开始，两位年份 < 91 视为 20xx，否则 19xx
+    return yy < 91 ? 2000 + yy : 1900 + yy;
+  }
+
   /* ---------------- 论文 ---------------- */
 
   /**
@@ -76,7 +89,8 @@ window.App = window.App || {};
       file: p.file_name,
       title: p.title || p.file_name || '(未命名)',
       authors: splitAuthors(p.authors),
-      year: p.year || null,
+      // 后端没有年份时用 arXiv 编号推导（编号前两位即提交年份）
+      year: p.year || yearFromArxiv(p.arxiv_id),
       venue: p.venue || null,
       arxiv: p.arxiv_id || null,
       abstract: p.abstract || '',
@@ -226,6 +240,7 @@ window.App = window.App || {};
     statusOf,
     docFromChunks,
     graphFromApi,
+    yearFromArxiv,
     installGraphInsights,
     installDataBridge,
   };
@@ -276,7 +291,7 @@ window.App = window.App || {};
         id: n.id,
         title: n.label,
         authors: [],
-        year: n.year || null,
+        year: n.year || yearFromArxiv(n.arxiv_id),
         venue: n.venue || null,
         arxiv: n.arxiv_id || null,
         quality: null,

@@ -186,18 +186,54 @@ window.App = window.App || {};
     });
 
     if (mode === 'radial') {
-      const years = nodes.map((n) => n.year);
-      const minY = Math.min.apply(null, years), maxY = Math.max.apply(null, years);
-      const byYear = U.groupBy(nodes, (n) => n.year);
-      Object.keys(byYear).forEach((y) => {
-        const k = (y - minY) / Math.max(1, maxY - minY);
-        const list = byYear[y];
-        list.forEach((n, i) => {
-          const a = (Math.PI * 2 * i) / list.length - Math.PI / 2;
-          const r = 70 + k * (Math.min(W, H) / 2 - 90);
-          pos[n.id] = { x: W / 2 + Math.cos(a) * r, y: H / 2 + Math.sin(a) * r };
+      // 按年份从内到外排布，角度用黄金角依次错开（时间螺旋）。
+      //
+      // 为什么不用「每年一圈、圈内均分」：
+      // 某年份只有 1 篇时，圈内均分的角度恒为 -π/2，
+      // 于是所有单篇年份都落在这条竖直射线上，只是半径不同，
+      // 看上去就是「一条线上的几个点」，完全体现不出时间层次。
+      // 黄金角（约 137.5°）让相邻节点始终错开，
+      // 任意数量都不会重合在同一条射线上。
+      //
+      // 另需处理两个真实数据的坑：
+      // 1. 外部文献没有年份，year 为 null，参与算术会得到 NaN，
+      //    坐标变 NaN 后 SVG 静默忽略该元素，表现为节点凭空消失
+      // 2. groupBy 的键是字符串，"2021"-0 能算，但 "null"-0 是 NaN
+      // 因此把「有年份」与「无年份」分开：有年份排螺旋，无年份放最外圈。
+      const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));   // ≈ 2.39996 弧度
+
+      const withYear = nodes.filter((n) => Number.isFinite(n.year));
+      const withoutYear = nodes.filter((n) => !Number.isFinite(n.year));
+      const maxR = Math.min(W, H) / 2 - 70;
+      let cursor = 0;
+
+      if (withYear.length) {
+        const minY = Math.min.apply(null, withYear.map((n) => n.year));
+        const maxY = Math.max.apply(null, withYear.map((n) => n.year));
+        const byYear = U.groupBy(withYear, (n) => String(n.year));
+
+        Object.keys(byYear).sort().forEach((key) => {
+          const k = (Number(key) - minY) / Math.max(1, maxY - minY);
+          const r = 70 + k * (maxR - 70);
+          byYear[key].forEach((n) => {
+            const a = cursor * GOLDEN_ANGLE - Math.PI / 2;
+            cursor += 1;
+            pos[n.id] = { x: W / 2 + Math.cos(a) * r, y: H / 2 + Math.sin(a) * r };
+          });
         });
-      });
+      }
+
+      // 无年份的文献放在最外圈：保留可见性，同时诚实表达「年份未知」
+      if (withoutYear.length) {
+        withoutYear.forEach((n, i) => {
+          const a = (Math.PI * 2 * i) / withoutYear.length - Math.PI / 2;
+          pos[n.id] = {
+            x: W / 2 + Math.cos(a) * (maxR + 26),
+            y: H / 2 + Math.sin(a) * (maxR + 26),
+          };
+        });
+      }
+
       return pos;
     }
 
