@@ -57,6 +57,14 @@ window.App = window.App || {};
             <button class="btn btn-sm btn-ghost" data-action="graph-toggle-core">
               ${st.graph.highlightCore ? '隐藏核心高亮' : '显示核心高亮'}
             </button>
+            ${(() => {
+              const ext = st.graphData && st.graphData.summary ? st.graphData.summary.external : 0;
+              if (!ext) return '';
+              return U.raw(h`
+                <button class="btn btn-sm ${st.graph.showExternal ? 'btn-primary' : 'btn-ghost'}" data-action="graph-toggle-external">
+                  ${st.graph.showExternal ? '只看库内论文' : '显示外部文献（' + ext + '）'}
+                </button>`);
+            })()}
           </div>
           <div class="card-body" style="padding:0">
             <div class="graph-canvas" id="gcanvas"></div>
@@ -109,7 +117,13 @@ window.App = window.App || {};
     // 有真实数据时优先用后端的引用图（含未入库的外部节点）。
     // 外部节点只有入边、没有引用数据，图上可见但不可进入阅读器。
     const real = App.store.state.graphData;
-    if (real && real.nodes && real.nodes.length) return real.nodes;
+    if (real && real.nodes && real.nodes.length) {
+      // 默认只显示库内论文：外部文献通常上百个，全画出来会挤成一团、
+      // 标签互相遮挡，反而看不出结构。需要时用顶部开关展开。
+      return App.store.state.graph.showExternal
+        ? real.nodes
+        : real.nodes.filter((n) => n.inLibrary);
+    }
 
     const ids = {};
     App.store.state.papers.forEach((p) => {
@@ -326,12 +340,12 @@ window.App = window.App || {};
           <span class="badge badge-outline">${nodes.length} 节点 / ${countEdges()} 边</span>
         </div>
         <div class="card-body tight">
-          ${degSorted.slice(0, 8).map((n, i) => h`
+          ${U.raw(degSorted.slice(0, 8).map((n, i) => h`
             <div class="row gap-8 mb-8">
               <span class="mono muted tiny" style="width:16px">${i + 1}</span>
               <span class="grow ellipsis small" data-action="graph-select" data-id="${n.id}" style="cursor:pointer">${n.title}</span>
               <span class="badge ${i === 0 ? 'badge-warn' : 'badge-outline'}">入度 ${m[n.id].in}</span>
-            </div>`).join('')}
+            </div>`).join(''))}
           <div class="muted tiny mt-8">入度 = 被图谱内论文引用的次数（PageRank 的简化代理）。</div>
         </div>
       </div>
@@ -384,7 +398,7 @@ window.App = window.App || {};
           <div class="card-title">基石论文（高入度核心节点）</div>
         </div>
         <div class="card-body tight">
-          ${ins.foundation.map((f) => {
+          ${U.raw(ins.foundation.map((f) => {
             const p = lookup(f.id);
             return App.ui.Out(h`
               <div class="insight-item">
@@ -396,7 +410,7 @@ window.App = window.App || {};
                 <div class="small mt-8">${f.reason}</div>
                 <button class="btn btn-sm btn-ghost mt-8" data-action="graph-open-paper" data-id="${f.id}">打开原文</button>
               </div>`);
-          }).join('')}
+          }).join(''))}
         </div>
       </div>
 
@@ -406,7 +420,7 @@ window.App = window.App || {};
           <div class="card-title">边缘衍生论文（低连通度节点）</div>
         </div>
         <div class="card-body tight">
-          ${ins.peripheral.map((f) => {
+          ${U.raw(ins.peripheral.map((f) => {
             const p = lookup(f.id);
             return App.ui.Out(h`
               <div class="insight-item">
@@ -417,7 +431,7 @@ window.App = window.App || {};
                 <div class="muted tiny mt-8">${p.venue} · ${p.year}</div>
                 <div class="small mt-8">${f.reason}</div>
               </div>`);
-          }).join('')}
+          }).join(''))}
         </div>
       </div>
     `;
@@ -466,10 +480,10 @@ window.App = window.App || {};
           </div>
           <div class="muted small">${f.reason}</div>
           <div class="row gap-4 mt-12 wrap">
-            ${f.related.map((id) => {
+            ${U.raw(f.related.map((id) => {
               const p = App.data.getPaper(id);
               return p ? h`<button class="badge badge-outline" data-action="graph-open-paper" data-id="${id}" style="cursor:pointer">${U.clip(p.title, 22)}</button>` : '';
-            }).join('')}
+            }).join(''))}
           </div>
         </div>
       </div>`).join('');

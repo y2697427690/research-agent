@@ -185,6 +185,14 @@ window.App = window.App || {};
       case 'graph-select': S.selectNode(data.id); break;
       case 'graph-layout': S.setGraphLayout(data.layout); break;
       case 'graph-toggle-core': S.toggleCoreHighlight(); break;
+      case 'graph-toggle-external':
+        App.store.set({
+          graph: Object.assign({}, App.store.state.graph, {
+            showExternal: !App.store.state.graph.showExternal,
+            selectedId: null,
+          }),
+        }, 'graph');
+        break;
       case 'graph-open-paper': S.openPaper(data.id); break;
 
       /* ---- 推荐 ---- */

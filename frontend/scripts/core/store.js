@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    store.js — 全局状态中心（极简发布/订阅）
    ----------------------------------------------------------------------------
    设计意图：
@@ -53,7 +53,14 @@ window.App = window.App || {};
     },
 
     // ---- 图谱 ----
-    graph: { groupId: 'g-transformer', layout: 'force', selectedId: null, highlightCore: true },
+    graph: {
+      groupId: 'g-transformer',
+      layout: 'force',
+      selectedId: null,
+      highlightCore: true,
+      // 是否在图上显示未入库的外部文献（通常上百个，默认关闭）
+      showExternal: false,
+    },
     // 真实引用图：由 loadGraph 从后端填充；为空时图谱页回退到演示数据
     graphData: null,
 
