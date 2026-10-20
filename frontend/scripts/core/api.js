@@ -173,6 +173,11 @@ window.App = window.App || {};
     },
     indexStatus() { return get('/search/index'); },
 
+    /* ---- 引用图谱 ---- */
+    graph() { return get('/graph'); },
+    /** 重建引用关系：需要重新解析 PDF，约 1~2 秒（6 篇），只在用户点击时调用 */
+    rebuildGraph() { return postJson('/graph/rebuild', {}); },
+
     /* ---- 检索 ---- */
     search(query, topK, allowVector) {
       return postJson('/search', {

@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     #新增模型时务必同步加到这里，否则表不会被创建且不报错（踩过两次）
     from app.db.base import Base
     from app.db.session import engine
-    from app.models import chunk, paper, translation  # noqa: F401
+    from app.models import chunk, citation, paper, translation  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

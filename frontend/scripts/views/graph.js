@@ -106,6 +106,11 @@ window.App = window.App || {};
      ========================================================================== */
   /** 参与图谱的论文（有引用关系的主干集合） */
   function collectNodes() {
+    // 有真实数据时优先用后端的引用图（含未入库的外部节点）。
+    // 外部节点只有入边、没有引用数据，图上可见但不可进入阅读器。
+    const real = App.store.state.graphData;
+    if (real && real.nodes && real.nodes.length) return real.nodes;
+
     const ids = {};
     App.store.state.papers.forEach((p) => {
       if ((p.citesIds || []).length || (p.citedByIds || []).length) ids[p.id] = p;

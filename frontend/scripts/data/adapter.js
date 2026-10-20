@@ -148,6 +148,73 @@ window.App = window.App || {};
     return list.map((h) => evidenceFromHit(h, maxScore)).filter(Boolean);
   }
 
+  /**
+   * 用真实图谱数据替换图谱页的分组与洞察文案。
+   *
+   * 为什么必须替换：洞察面板的文案与分组条数来自演示数据，
+   * 会显示「覆盖 20 篇论文、41 条引用边」这类与真实数据不符的数字。
+   * 界面上的统计必须真实，否则等于在界面上编造数据。
+   *
+   * 规则（全部可由真实指标复算，不含人工判断）：
+   *   foundation  入度 >= 2 的库内论文，按入度降序
+   *   peripheral  入度为 0 的库内论文
+   *   summary     由节点数、边数、连通分量数拼出的客观描述
+   */
+  function installGraphInsights(graphData) {
+    if (!App.data || !App.store || !graphData) return false;
+    const nodes = graphData.nodes || [];
+    const summary = graphData.summary || {};
+    const lib = nodes.filter((n) => n.inLibrary);
+
+    // 分组下拉框：真实文库只有一个分组，条数用真实值
+    App.data.graphGroups = [{
+      id: 'g-transformer',
+      name: '当前文库',
+      count: lib.length,
+    }];
+
+    const foundation = nodes
+      .filter((n) => n.core === 'foundation')
+      .sort((a, b) => (b.inDegree - a.inDegree) || (b.pagerank - a.pagerank))
+      .slice(0, 6)
+      .map((n) => ({
+        id: n.id,
+        reason: '被库内 ' + n.inDegree + ' 篇论文引用，PageRank '
+          + (n.pagerank || 0).toFixed(4),
+      }));
+
+    const peripheral = nodes
+      .filter((n) => n.core === 'peripheral' || n.core === 'frontier')
+      .slice(0, 6)
+      .map((n) => ({
+        id: n.id,
+        reason: n.inDegree === 0
+          ? '尚未被库内其它论文引用（出度 ' + n.outDegree + '）'
+          : '被引 ' + n.inDegree + ' 次',
+      }));
+
+    const text = [
+      '当前文库 ' + lib.length + ' 篇论文，外部被引文献 ' + (summary.external || 0) + ' 篇，',
+      '共 ' + (summary.edgeCount || 0) + ' 条引用边，形成 ' + (summary.clusters || 0) + ' 个连通分支。',
+      foundation.length
+        ? '被库内论文引用最多的是《' + (nodes.find((n) => n.id === foundation[0].id) || {}).title + '》。'
+        : '库内论文之间暂未形成互相引用，建议上传同一方向的相关论文后重建引用关系。',
+      (summary.isolated || []).length
+        ? '另有 ' + summary.isolated.length + ' 篇论文与库内其它论文没有引用关系。'
+        : '',
+    ].join('');
+
+    App.data.graphInsights = App.data.graphInsights || {};
+    App.data.graphInsights['g-transformer'] = {
+      foundation: foundation,
+      peripheral: peripheral,
+      summary: text,
+      // 未来工作方向来自演示数据，真实数据没有可靠依据，置空而不是编造
+      futureWork: [],
+    };
+    return true;
+  }
+
   App.adapter = {
     paperFromApi,
     papersFromApi,
@@ -158,8 +225,88 @@ window.App = window.App || {};
     splitKeywords,
     statusOf,
     docFromChunks,
+    graphFromApi,
+    installGraphInsights,
     installDataBridge,
   };
+
+  /* ---------------- 引用图谱适配 ----------------
+     后端 /graph 返回的是「节点 + 边 + 指标」，而图谱视图是从
+     「每篇论文的 citesIds」自行推导边与度量的。
+     这里把边反查成每篇的引用列表，视图侧只需换一个数据来源即可。
+     ------------------------------------------------------------------ */
+
+  /**
+   * 后端图谱 → 视图认识的节点结构。
+   *
+   * core（基石/前沿/边缘）在演示数据里是人工标注的；
+   * 真实数据没有这等人工判断，这里用可解释的规则推导：
+   *   入度 >= 2              → foundation（基石：被多篇库内论文引用）
+   *   入度 = 0 且出度 >= 3   → frontier（前沿：大量引用他人但尚未被引）
+   *   入度 = 0               → peripheral（边缘）
+   *   其余                   → derived（一般）
+   * 外部论文（未入库）标 external，图上可见但不可进入阅读器。
+   */
+  function graphFromApi(data) {
+    const cites = {};
+    const citedBy = {};
+    (data.edges || []).forEach((e) => {
+      (cites[e.source] = cites[e.source] || []).push(e.target);
+      (citedBy[e.target] = citedBy[e.target] || []).push(e.source);
+    });
+
+    const libraryIds = {};
+    (data.nodes || []).forEach((n) => {
+      if (n.in_library) libraryIds[n.id] = true;
+    });
+
+    const nodes = (data.nodes || []).map((n) => {
+      let core = 'derived';
+      if (!n.in_library) {
+        core = 'external';
+      } else if ((n.in_degree || 0) >= 2) {
+        core = 'foundation';
+      } else if ((n.in_degree || 0) === 0 && (n.out_degree || 0) >= 3) {
+        core = 'frontier';
+      } else if ((n.in_degree || 0) === 0) {
+        core = 'peripheral';
+      }
+
+      return {
+        id: n.id,
+        title: n.label,
+        authors: [],
+        year: n.year || null,
+        venue: n.venue || null,
+        arxiv: n.arxiv_id || null,
+        quality: null,
+        core: core,
+        inLibrary: !!n.in_library,
+        inDegree: n.in_degree || 0,
+        outDegree: n.out_degree || 0,
+        pagerank: n.pagerank || 0,
+        cluster: n.cluster || 0,
+        // 只保留指向库内节点的边：外部节点在图上没有引用数据，
+        // 把它们算进边集合会污染度量
+        citesIds: (cites[n.id] || []).filter((t) => libraryIds[t]),
+        citedByIds: (citedBy[n.id] || []).filter((s) => libraryIds[s]),
+      };
+    });
+
+    return {
+      nodes: nodes,
+      edges: (data.edges || []).map((e) => ({ from: e.source, to: e.target })),
+      summary: {
+        library: data.library_count || 0,
+        external: data.external_count || 0,
+        edgeCount: data.edge_count || 0,
+        clusters: data.cluster_count || 0,
+        topPagerank: data.top_by_pagerank || [],
+        topInDegree: data.top_by_in_degree || [],
+        isolated: data.isolated || [],
+      },
+    };
+  }
 
   /* ---------------- 阅读器数据桥 ----------------
      阅读器（views/reader.js）调用 App.data.getPaper / getDoc 取数据，

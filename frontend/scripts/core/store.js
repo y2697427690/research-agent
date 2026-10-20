@@ -54,6 +54,8 @@ window.App = window.App || {};
 
     // ---- 图谱 ----
     graph: { groupId: 'g-transformer', layout: 'force', selectedId: null, highlightCore: true },
+    // 真实引用图：由 loadGraph 从后端填充；为空时图谱页回退到演示数据
+    graphData: null,
 
     // ---- 推荐 ----
     discover: { tab: 'daily', filter: 'all', feedback: {} },  // feedback: {id: 'up'|'down'}
@@ -94,6 +96,51 @@ window.App = window.App || {};
       state.route = route;
       state.routeParams = params || {};
       notify('route');
+      // 进入图谱页时按需加载真实引用图（已有数据则用缓存，不重复请求）
+      if (route === 'graph' && !state.graphData) actions.loadGraph();
+    },
+
+    /**
+     * 加载真实引用图。
+     * 后端即时从 citations 表构图并计算指标，数据不大，
+     * 因此只在首次进入或用户主动刷新时请求，其余情况用缓存。
+     */
+    async loadGraph(force) {
+      if (!hasApi()) return null;
+      if (state.graphData && !force) return state.graphData;
+      try {
+        const data = await App.api.graph();
+        state.graphData = App.adapter.graphFromApi(data);
+        // 同步替换分组与洞察文案，否则界面仍显示演示数据的统计数字
+        if (App.adapter.installGraphInsights) {
+          App.adapter.installGraphInsights(state.graphData);
+        }
+        notify('graph');
+        return state.graphData;
+      } catch (err) {
+        App.ui.toast('加载引用图谱失败：' + err.message, 'error');
+        return null;
+      }
+    },
+
+    /** 重建引用关系（重新解析 PDF 抽取参考文献）。会覆盖旧边。 */
+    async rebuildGraph() {
+      if (!hasApi()) return null;
+      try {
+        App.ui.busy('正在重建引用关系…');
+        const st = await App.api.rebuildGraph();
+        App.ui.busy(null);
+        App.ui.toast(
+          '引用重建完成：' + st.total_refs + ' 条参考文献，命中库内 '
+          + st.matched + ' 条（编号 ' + st.by_arxiv + ' / 标题 ' + st.by_title + '）',
+          'ok', 3600
+        );
+        return await actions.loadGraph(true);
+      } catch (err) {
+        App.ui.busy(null);
+        App.ui.toast('重建失败：' + err.message, 'error');
+        return null;
+      }
     },
 
     /**
