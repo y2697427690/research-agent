@@ -1,4 +1,4 @@
-"""问答接口。
+﻿"""问答接口。
 
 两个端点：
     POST /qa          非流式，一次性返回完整回答（便于调试与自动化测试）
@@ -33,6 +33,7 @@ async def ask(
     result = await rag.answer(
         db, payload.question,
         top_k=payload.top_k, allow_vector=payload.allow_vector,
+        paper_ids=payload.paper_ids or None,
     )
     return AnswerResponse(
         question=result.question,
@@ -87,6 +88,7 @@ async def ask_stream(payload: AskRequest) -> StreamingResponse:
                 async for event in rag.answer_stream(
                     db, payload.question,
                     top_k=payload.top_k, allow_vector=payload.allow_vector,
+                    paper_ids=payload.paper_ids or None,
                 ):
                     yield _sse(event)
             except Exception as exc:              # noqa: BLE001 兜住生成器内异常

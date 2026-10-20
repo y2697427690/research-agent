@@ -1,4 +1,4 @@
-﻿"""统一检索入口：混合检索（BM25 + 向量 + RRF）+ 自动降级。
+"""统一检索入口：混合检索（BM25 + 向量 + RRF）+ 自动降级。
 
 设计要点：
 1. 索引缓存
@@ -37,6 +37,29 @@ logger = logging.getLogger(__name__)
 # 让 RRF 有足够的重叠空间——两路都靠前的块才会浮上来。
 CANDIDATE_MULTIPLIER = 3
 MIN_CANDIDATES = 20
+
+
+def _take_per_paper(items, paper_of, per_paper: int):
+    """按论文配额抽取：每篇论文最多取 per_paper 条，保持原有顺序。
+
+    为什么对比场景必须做配额：
+    若只按全局分数取前 N 条，语义上最贴近问题的那一篇会把名额吃光。
+    实测问「两篇对 layer normalization 的使用有何不同」时，
+    《Layer Normalization》一篇占满了 8 个片段，
+    另一篇一个字都没进上下文，模型只能回答「资料不足」——
+    这不是模型的问题，是检索没有覆盖到对比所需的双方。
+    """
+    if per_paper <= 0:
+        return items
+    used: dict[str, int] = {}
+    out = []
+    for item in items:
+        pid = paper_of(item)
+        if used.get(pid, 0) >= per_paper:
+            continue
+        used[pid] = used.get(pid, 0) + 1
+        out.append(item)
+    return out
 
 # 关键词检索的最低相对区分度：首位命中词的最大 IDF / 本语料最大 IDF。
 # 低于该比例说明 BM25 只匹配到「到处都有」的常见词（如一篇论文里反复出现的
@@ -186,8 +209,16 @@ async def retrieve(
     query: str,
     top_k: int = 8,
     allow_vector: bool = True,
+    paper_ids: list[str] | None = None,
 ) -> RetrievalResult:
-    """混合检索。嵌入不可用时自动降级为纯 BM25。"""
+    """混合检索。嵌入不可用时自动降级为纯 BM25。
+
+    paper_ids 用于把检索范围限定在指定论文内（多篇对比场景）。
+    实现方式是「先多取候选、再按论文过滤」：
+    索引是全局的，按论文另建索引既浪费内存又要处理增量更新，
+    而候选列表本来就不长，事后过滤的代价可以忽略。
+    过滤时会把候选深度放大，避免过滤后剩不下几条。
+    """
     query = (query or "").strip()
     if not query:
         return RetrievalResult(query="", mode="empty")
@@ -200,7 +231,17 @@ async def retrieve(
     if len(bm25) == 0:
         return RetrievalResult(query=query, mode="empty")
 
-    candidate_k = max(top_k * CANDIDATE_MULTIPLIER, MIN_CANDIDATES)
+    # 指定论文时放大候选深度：过滤会淘汰大量候选，
+    # 若仍按原深度取，很容易过滤后一条都不剩
+    scope_ids = set(paper_ids) if paper_ids else None
+    depth_boost = 4 if scope_ids else 1
+    candidate_k = max(top_k * CANDIDATE_MULTIPLIER, MIN_CANDIDATES) * depth_boost
+
+    # 每篇论文的片段配额：保证对比的双方都能进上下文。
+    # 单篇或无范围限制时不启用。
+    per_paper = 0
+    if scope_ids:
+        per_paper = max(2, -(-top_k // len(scope_ids)))   # 向上取整
 
     rankings: dict[str, list[str]] = {}
     degraded: str | None = None
@@ -210,6 +251,11 @@ async def retrieve(
     # 见 MIN_INFORMATIVE_IDF_RATIO 的说明：当一轮 BM25 的首位命中词也过于常见时，
     # 它给出的名次基本是噪声，进入 RRF 反而会把向量检索的正确答案挤下去。
     bm25_hits = bm25.search(query, top_k=candidate_k)
+    if scope_ids:
+        bm25_hits = [h for h in bm25_hits if h.chunk.paper_id in scope_ids]
+        bm25_hits = _take_per_paper(
+            bm25_hits, lambda h: h.chunk.paper_id, per_paper
+        )
     if bm25_hits:
         top_idf = max(
             (bm25.idf(t) for t in bm25_hits[0].matched_terms), default=0.0
@@ -232,7 +278,16 @@ async def retrieve(
         try:
             query_vec = await embedding.embed_one(query)
             vector_hits = vector.search(query_vec, top_k=candidate_k)
-            ids = [vector.chunks[i].chunk_id for i, _ in vector_hits]
+            ids = [
+                vector.chunks[i].chunk_id
+                for i, _ in vector_hits
+                if scope_ids is None or vector.chunks[i].paper_id in scope_ids
+            ]
+            if scope_ids:
+                # 按论文配额裁剪，避免语义最贴近的一篇占据全部名额
+                ids = _take_per_paper(
+                    ids, lambda cid: meta[cid].paper_id, per_paper
+                )
             if ids:
                 rankings["vector"] = ids
                 vector_count = len(ids)

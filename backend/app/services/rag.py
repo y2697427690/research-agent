@@ -16,8 +16,10 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.paper import Paper
 from app.services import llm, retrieval
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,23 @@ SYSTEM_PROMPT = """你是一个严谨的科研文献助手。请严格遵守以�
 6. 不要输出与问题无关的客套话或额外说明。
 """
 
+# 多篇论文对比专用提示词。
+# 对比与单篇问答的区别在于：答案结构必须是「逐维度比对」，
+# 并且要指出哪篇继承了什么、放弃了什么。这些约束单篇 prompt 不包含。
+COMPARE_SYSTEM_PROMPT = """你是一个严谨的科研文献对比分析助手。请严格遵守：
+
+1. 只能依据我提供的资料片段作答，不得使用你自己的知识补充。
+2. 每个结论句末尾必须标注来源编号，格式为方括号加数字，例如 [1] 或 [2][3]。
+3. 只能使用资料中出现过的编号，不要编造编号。
+4. 回答结构要求：
+   - 先分别说明各篇论文在问题相关维度上的做法（每篇都要有引用）；
+   - 再给出对比结论：相同之处、差异之处、哪篇继承或改变了另一篇的什么；
+   - 如果某个维度只有一篇论文有资料，明确说明「另一篇资料中未涉及」。
+5. 资料不足以支撑某个对比维度时，直接说「资料不足」，不要靠常识补全。
+6. 用简明的中文回答；专业术语保留英文原文。
+7. 不要输出与问题无关的客套话或额外说明。
+"""
+
 REFUSAL_TEXT = "提供的资料中没有相关内容，无法回答这个问题。"
 
 
@@ -48,6 +67,9 @@ class ContextSnippet:
     paper_id: str
     citation: str                   # 出处描述，如「3.2 节（第 4 页）」
     text: str
+    # 论文标题：多篇对比时必须让模型知道「这段来自哪篇」，
+    # 否则它只能看到「3.2 节」，分不清是 BERT 还是 Transformer 的 3.2 节
+    paper_title: str | None = None
 
 
 @dataclass
@@ -59,6 +81,7 @@ class Citation:
     paper_id: str
     citation: str
     text: str
+    paper_title: str | None = None
 
 
 @dataclass
@@ -74,12 +97,16 @@ class AnswerResult:
     refused: bool = False
 
 
-def build_snippets(hits) -> list[ContextSnippet]:
+def build_snippets(hits, titles: dict[str, str] | None = None) -> list[ContextSnippet]:
     """把检索命中转成带编号的资料片段。
 
     hits 为 retrieval.RetrievalHit 列表；这里只取需要的字段，
     避免让 rag 模块依赖检索模块的类型。
+
+    titles 为「论文 id → 标题」映射。单篇问答可省略；
+    多篇对比时必须提供，否则模型无法区分某段文字来自哪篇论文。
     """
+    title_map = titles or {}
     snippets = []
     for i, hit in enumerate(hits, start=1):
         snippets.append(ContextSnippet(
@@ -88,6 +115,7 @@ def build_snippets(hits) -> list[ContextSnippet]:
             paper_id=hit.paper_id,
             citation=hit.citation,
             text=hit.text,
+            paper_title=title_map.get(hit.paper_id),
         ))
     return snippets
 
@@ -95,33 +123,62 @@ def build_snippets(hits) -> list[ContextSnippet]:
 def build_context(snippets: list[ContextSnippet]) -> str:
     """把片段拼成给模型看的资料块。
 
-    每段都带上「编号 + 出处」，模型回答时可以顺带指明章节，
-    也让用户更容易判断这段话是否可信。
+    每段带上「编号 + 论文名 + 出处」。多篇对比时论文名不可省：
+    只写「3.2 节」模型无法判断这是哪篇论文的 3.2 节。
     """
     parts = []
     for s in snippets:
-        parts.append(f"[{s.index}] 出处：{s.citation}\n{s.text}")
+        where = f"《{s.paper_title}》{s.citation}" if s.paper_title else s.citation
+        parts.append(f"[{s.index}] 出处：{where}\n{s.text}")
     return "\n\n".join(parts)
 
 
-def build_messages(question: str, snippets: list[ContextSnippet]) -> list[dict]:
+def build_messages(
+    question: str,
+    snippets: list[ContextSnippet],
+    compare: bool = False,
+) -> list[dict]:
     """构造对话消息。
 
     资料放在 user 消息里而不是 system 里，是为了让「规则」与「素材」
     分处不同角色，模型更不容易把素材当成指令（也能降低注入风险：
     论文正文里若出现「忽略以上指令」之类的文字，位于 user 侧的素材
     不像 system 那样具有最高优先级）。
+
+    compare=True 时改用对比型提示词：要求按维度分别陈述再给结论。
     """
     context = build_context(snippets)
+    if compare:
+        ask = (
+            "请对比以上论文在同一问题上的做法与结论。"
+            "先分别说明各篇的做法（每篇都要有引用），再给出相同点、差异点，"
+            "以及哪篇继承或改变了另一篇的什么。"
+        )
+    else:
+        ask = "请依据以上资料回答下面的问题，并在每个结论后标注来源编号。"
+
     user_content = (
         f"资料片段如下：\n\n{context}\n\n"
-        f"请依据以上资料回答下面的问题，并在每个结论后标注来源编号。\n\n"
+        f"{ask}\n\n"
         f"问题：{question}"
     )
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": COMPARE_SYSTEM_PROMPT if compare else SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
+
+
+async def _paper_titles(db: AsyncSession, paper_ids: set[str]) -> dict[str, str]:
+    """取论文标题映射，只查实际命中片段涉及的论文（通常 1~3 篇）。"""
+    if not paper_ids:
+        return {}
+    rows = (await db.execute(
+        select(Paper.id, Paper.title, Paper.file_name).where(Paper.id.in_(paper_ids))
+    )).all()
+    return {
+        pid: (title or file_name or pid)
+        for pid, title, file_name in rows
+    }
 
 
 def extract_marks(answer: str) -> list[int]:
@@ -233,15 +290,19 @@ async def answer(
     *,
     top_k: int = DEFAULT_TOP_K,
     allow_vector: bool = True,
+    paper_ids: list[str] | None = None,
 ) -> AnswerResult:
     """非流式问答：一次性返回完整回答。
+
+    paper_ids 用于把检索限定在指定论文内；传入 2 篇及以上时自动切换为
+    对比型提示词，要求按维度分别陈述再给结论。
 
     检索为空时直接返回固定拒答，不调用大模型——
     没有资料时让模型「自由发挥」是幻觉最主要的来源。
     """
     question = (question or "").strip()
     retrieved = await retrieval.retrieve(
-        db, question, top_k=top_k, allow_vector=allow_vector
+        db, question, top_k=top_k, allow_vector=allow_vector, paper_ids=paper_ids
     )
 
     if not retrieved.hits:
@@ -256,8 +317,12 @@ async def answer(
             refused=True,
         )
 
-    snippets = build_snippets(retrieved.hits)
-    messages = build_messages(question, snippets)
+    # 取命中片段涉及的论文标题：多篇对比时上下文里必须标出「这段来自哪篇」
+    titles = await _paper_titles(db, {h.paper_id for h in retrieved.hits})
+    compare = len(titles) >= 2
+
+    snippets = build_snippets(retrieved.hits, titles)
+    messages = build_messages(question, snippets, compare=compare)
     try:
         text = await llm.chat(messages)
     except Exception:
@@ -316,6 +381,7 @@ async def answer_stream(
     *,
     top_k: int = DEFAULT_TOP_K,
     allow_vector: bool = True,
+    paper_ids: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """流式问答，产出 SSE 事件。
 
@@ -338,7 +404,7 @@ async def answer_stream(
         return
 
     retrieved = await retrieval.retrieve(
-        db, question, top_k=top_k, allow_vector=allow_vector
+        db, question, top_k=top_k, allow_vector=allow_vector, paper_ids=paper_ids
     )
 
     # 第一层防幻觉：没有资料就拒答，不调用模型
@@ -356,10 +422,13 @@ async def answer_stream(
         }
         return
 
-    snippets = build_snippets(retrieved.hits)
+    titles = await _paper_titles(db, {h.paper_id for h in retrieved.hits})
+    compare = len(titles) >= 2
+
+    snippets = build_snippets(retrieved.hits, titles)
     yield _snippet_event(snippets)
 
-    messages = build_messages(question, snippets)
+    messages = build_messages(question, snippets, compare=compare)
     pieces: list[str] = []
     try:
         async for piece in llm.stream_chat(messages):

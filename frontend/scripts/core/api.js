@@ -188,8 +188,12 @@ window.App = window.App || {};
     },
 
     /* ---- 问答（非流式，便于调试） ---- */
-    ask(question, topK) {
-      return postJson('/qa', { question: question, top_k: topK || 6 });
+    ask(question, topK, paperIds) {
+      return postJson('/qa', {
+        question: question,
+        top_k: topK || 6,
+        paper_ids: paperIds || [],
+      });
     },
 
     /**
@@ -202,7 +206,7 @@ window.App = window.App || {};
      *
      * 返回一个 { abort } 对象，调用 abort() 可中断生成。
      */
-    askStream(question, topK, onEvent) {
+    askStream(question, topK, onEvent, paperIds) {
       const controller = new AbortController();
 
       const run = async () => {
@@ -211,7 +215,12 @@ window.App = window.App || {};
           resp = await fetch(API_BASE + '/qa/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: question, top_k: topK || 6 }),
+            body: JSON.stringify({
+              question: question,
+              top_k: topK || 6,
+              // 传 2 篇及以上时后端自动切换为对比模式
+              paper_ids: paperIds || [],
+            }),
             signal: controller.signal,
           });
         } catch (e) {

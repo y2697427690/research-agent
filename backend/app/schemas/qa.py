@@ -1,4 +1,4 @@
-"""问答接口的请求与响应模型。"""
+﻿"""问答接口的请求与响应模型。"""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
@@ -10,6 +10,10 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="问题")
     top_k: int = Field(6, ge=1, le=20, description="检索并交给模型的片段数")
     allow_vector: bool = Field(True, description="是否允许向量检索")
+    paper_ids: list[str] = Field(
+        default_factory=list,
+        description="把检索限定在这些论文内；传 2 篇及以上时自动切换为对比模式",
+    )
 
 
 class CitationOut(BaseModel):

@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    store.js — 全局状态中心（极简发布/订阅）
    ----------------------------------------------------------------------------
    设计意图：
@@ -598,6 +598,17 @@ window.App = window.App || {};
       }
 
       await new Promise((resolve) => {
+        // 按当前的问答范围传论文 id：
+        //   单篇模式 → 只传当前选中的那一篇
+        //   多篇模式 → 传全部选中论文，后端据此切换为对比提示词
+        // 不传时后端会检索全库，可能把不相关的论文也带进来
+        let scopeIds = [];
+        if (state.qa.scope === 'multi') {
+          scopeIds = state.qa.paperIds.slice();
+        } else if (state.qa.paperIds.length) {
+          scopeIds = [state.qa.paperIds[0]];
+        }
+
         App.api.askStream(q, state.qa.topK, (event) => {
           if (event.type === 'citations') {
             // 先到的资料来源：让「检索命中 N 段」立刻显示出来
@@ -657,7 +668,7 @@ window.App = window.App || {};
             notify('chats');
             resolve();
           }
-        });
+        }, scopeIds);
       });
 
       return answerMsg;

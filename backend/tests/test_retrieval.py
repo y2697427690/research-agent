@@ -553,3 +553,134 @@ async def test_replace_chunks_preserves_embeddings_of_unchanged_text(db_session_
         assert len(again) == n1
         kept = sum(1 for r in again if r.embedding is not None)
         assert kept == n1, f"文本未变的块应保留向量，实际保留 {kept} / {n1}"
+
+
+# ---------------------------------------------------------------- 多篇对比
+
+async def test_retrieve_filters_by_paper_ids(tmp_path, monkeypatch):
+    """指定 paper_ids 时只能返回这些论文的片段。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.models.chunk import Chunk
+    from app.models.paper import Paper
+    from app.services.vector_store import pack_vectors
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(db_session, "engine", engine)
+    monkeypatch.setattr(db_session, "SessionLocal", maker)
+
+    from app.db.base import Base
+    from app.models import chunk, citation, paper, translation  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with maker() as session:
+        for pid in ("pA", "pB"):
+            session.add(Paper(id=pid, sha1=(pid * 20)[:40], file_name=pid + ".pdf",
+                              file_path="x.pdf", size_bytes=1))
+        await session.flush()
+        for i in range(3):
+            session.add(Chunk(id=f"pA-c{i}", paper_id="pA", chunk_index=i,
+                              text=f"layer normalization detail {i}",
+                              char_count=30, section_title="S", page_start=1, page_end=1,
+                              embedding=pack_vectors([[1.0, 0.0]]),
+                              embedding_model=settings.embedding_model))
+            session.add(Chunk(id=f"pB-c{i}", paper_id="pB", chunk_index=i,
+                              text=f"attention mechanism detail {i}",
+                              char_count=30, section_title="S", page_start=1, page_end=1,
+                              embedding=pack_vectors([[1.0, 0.0]]),
+                              embedding_model=settings.embedding_model))
+        await session.commit()
+
+    monkeypatch.setattr(embedding, "is_available", lambda: True)
+
+    async def fake_embed_one(text: str):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(embedding, "embed_one", fake_embed_one)
+
+    retrieval.invalidate()
+    async with maker() as db:
+        only_a = await retrieval.retrieve(db, "layer normalization", top_k=6,
+                                          paper_ids=["pA"])
+        both = await retrieval.retrieve(db, "layer normalization", top_k=6,
+                                        paper_ids=["pA", "pB"])
+    await engine.dispose()
+    retrieval.invalidate()
+
+    assert only_a.hits
+    assert {h.paper_id for h in only_a.hits} == {"pA"}
+    # 两篇都指定时，两边都要有片段，否则对比无从谈起
+    assert {h.paper_id for h in both.hits} == {"pA", "pB"}
+
+
+async def test_retrieve_applies_per_paper_quota(tmp_path, monkeypatch):
+    """语义最贴近的那篇不得占满全部名额（按论文配额抽取）。"""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.models.chunk import Chunk
+    from app.models.paper import Paper
+    from app.services.vector_store import pack_vectors
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(db_session, "engine", engine)
+    monkeypatch.setattr(db_session, "SessionLocal", maker)
+
+    from app.db.base import Base
+    from app.models import chunk, citation, paper, translation  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with maker() as session:
+        for pid in ("pX", "pY"):
+            session.add(Paper(id=pid, sha1=(pid * 20)[:40], file_name=pid + ".pdf",
+                              file_path="x.pdf", size_bytes=1))
+        await session.flush()
+        # pX 的向量与查询完全一致（会被大量召回）；pY 的向量弱一些
+        for i in range(20):
+            session.add(Chunk(id=f"pX-c{i}", paper_id="pX", chunk_index=i,
+                              text=f"normalization text {i}", char_count=30,
+                              section_title="S", page_start=1, page_end=1,
+                              embedding=pack_vectors([[1.0, 0.0]]),
+                              embedding_model=settings.embedding_model))
+        session.add(Chunk(id="pY-c0", paper_id="pY", chunk_index=0,
+                          text="other content", char_count=20,
+                          section_title="S", page_start=1, page_end=1,
+                          embedding=pack_vectors([[0.6, 0.8]]),
+                          embedding_model=settings.embedding_model))
+        await session.commit()
+
+    monkeypatch.setattr(embedding, "is_available", lambda: True)
+
+    async def fake_embed_one(text: str):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(embedding, "embed_one", fake_embed_one)
+
+    retrieval.invalidate()
+    async with maker() as db:
+        result = await retrieval.retrieve(db, "normalization", top_k=4,
+                                          paper_ids=["pX", "pY"])
+    await engine.dispose()
+    retrieval.invalidate()
+
+    papers = {h.paper_id for h in result.hits}
+    assert "pY" in papers, "弱相关的那篇也必须进入上下文，否则无法对比"
+    counts = {}
+    for h in result.hits:
+        counts[h.paper_id] = counts.get(h.paper_id, 0) + 1
+    assert counts["pX"] <= 2, "按配额每篇最多约 top_k/篇数 条"
