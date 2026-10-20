@@ -19,6 +19,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.chunk import Chunk
+
+# 起别名：本文件里已有一个 Citation 数据类（回答引用的来源），
+# 直接导入会同名冲突，导致查询语句意外用到数据类上
+from app.models.citation import Citation as CitationRow
 from app.models.paper import Paper
 from app.services import llm, retrieval
 
@@ -36,6 +41,15 @@ SYSTEM_PROMPT = """你是一个严谨的科研文献助手。请严格遵守以�
 4. 如果资料不足以回答问题，直接回答「提供的资料中没有相关内容」，不要猜测。
 5. 用简明的中文回答；专业术语保留英文原文。
 6. 不要输出与问题无关的客套话或额外说明。
+7. 关于作者与机构：资料中若出现连续列出的作者名单（常见于论文首页块），
+   可以按出现顺序回答「第 N 位作者是谁」。
+   机构名若与作者名单成组出现在同一段，可按组内顺序对应推断，
+   但必须注明「按解析顺序推断」，不要把它说成原文明确标注的结论。
+8. 关于数值与引用：资料中的数字、公式、引用编号一律原样引用，不要换算或改写。
+9. 关于实验配置：若问题问的是某个子模型（如 base / big）的配置，
+   而资料只给出整体配置（例如「我们在 8 块 NVIDIA P100 上训练模型」），
+   可以直接用整体配置作答，但须注明「论文给出的是整体训练配置，未按子模型分列」。
+   只有在资料完全没有任何相关数字时才拒答。
 """
 
 # 多篇论文对比专用提示词。
@@ -181,6 +195,198 @@ async def _paper_titles(db: AsyncSession, paper_ids: set[str]) -> dict[str, str]
     }
 
 
+async def _front_chunks(
+    db: AsyncSession, paper_ids: set[str]
+) -> dict[str, str]:
+    """取每篇论文的「首页块」文本（chunk_index 最小的一块）。
+
+    为什么必须固定加入：首页块包含标题、作者名单、机构与摘要开头，
+    而这些是元信息类问题（作者是谁、第 N 位作者、在哪个机构）的唯一来源。
+    语义检索不一定把它排进前几名——实测问「第 6 作者是谁」时，
+    首页块确实被召回了，但另外 5 条都是注意力机制正文，
+    模型面对 5 条无关 + 1 条混杂的作者信息，选择了拒答。
+    把首页块作为固定片段加入，可以让「元信息一定在场」，
+    与语义检索的结果互补。
+    """
+    if not paper_ids:
+        return {}
+    rows = (await db.execute(
+        select(Chunk.paper_id, Chunk.text)
+        .where(Chunk.paper_id.in_(paper_ids))
+        .order_by(Chunk.paper_id, Chunk.chunk_index)
+    )).all()
+
+    front: dict[str, str] = {}
+    for pid, text in rows:
+        if pid not in front:          # 每篇只取序号最小的一块
+            front[pid] = text or ""
+    return front
+
+
+def merge_with_front_matter(
+    hits, titles: dict[str, str], front: dict[str, str]
+) -> list[ContextSnippet]:
+    """把首页块排在前面，检索命中接在后面，统一重新编号。
+
+    编号顺序即引用顺序：首页块排在 [1..k]，
+    这样模型引用元信息时会指向最先出现的片段，便于核对。
+    """
+    snippets: list[ContextSnippet] = []
+    cursor = 1
+
+    for pid, text in front.items():
+        if not text.strip():
+            continue
+        snippets.append(ContextSnippet(
+            index=cursor,
+            chunk_id=f"{pid}-front",
+            paper_id=pid,
+            citation="论文首页（标题、作者与摘要开头）",
+            text=text,
+            paper_title=titles.get(pid),
+        ))
+        cursor += 1
+
+    for snip in build_snippets(hits, titles):
+        snip.index = cursor
+        cursor += 1
+        snippets.append(snip)
+
+    return snippets
+
+
+# 问题里出现这些词时，把参考文献列表也放进上下文
+_REF_KEYWORDS = (
+    "参考文献", "引用文献", "引用了哪些", "文献列表", "reference", "references",
+    "引用信息", "被引", "citation",
+)
+
+
+def wants_references(question: str) -> bool:
+    """判断问题是否在问参考文献。
+
+    参考文献区在分块时被刻意过滤掉了（避免污染正文检索），
+    因此它不在普通片段里，必须单独作为一段资料补进来，
+    否则「列出关于 X 的参考文献」这类问题永远只能拒答。
+    """
+    text = (question or "").casefold()
+    return any(k.casefold() in text for k in _REF_KEYWORDS)
+
+
+async def build_reference_snippet(
+    db: AsyncSession, paper_ids: set[str], titles: dict[str, str]
+) -> str | None:
+    """把指定论文的参考文献列表拼成一段资料文本。
+
+    数据来自 citations 表（抽取引用关系时已落库的参考文献原文），
+    不需要重新解析 PDF。每条截断到 300 字符，整体不超过 80 条，
+    避免一份超长文献表把上下文挤爆。
+    """
+    if not paper_ids:
+        return None
+
+    rows = (await db.execute(
+        select(
+            CitationRow.source_paper_id,
+            CitationRow.ref_index,
+            CitationRow.raw_text,
+        )
+        .where(CitationRow.source_paper_id.in_(paper_ids))
+        .order_by(CitationRow.source_paper_id, CitationRow.ref_index)
+    )).all()
+    if not rows:
+        return None
+
+    lines: list[str] = []
+    current = None
+    for pid, idx, raw in rows:
+        if len(lines) > 80:
+            lines.append("……（其余条目略）")
+            break
+        if pid != current:
+            current = pid
+            lines.append(f"【《{titles.get(pid, pid)}》的参考文献】")
+        text = (raw or "").strip().replace("\n", " ")
+        lines.append(f"[{idx}] {text[:300]}")
+
+    return "\n".join(lines) if lines else None
+
+
+async def _maybe_add_references(
+    db: AsyncSession,
+    question: str,
+    snippets: list[ContextSnippet],
+    titles: dict[str, str],
+) -> list[ContextSnippet]:
+    """问题涉及参考文献时，在末尾追加一段参考文献列表。
+
+    追加在最后而不是最前：正文片段优先占编号，
+    模型回答正文问题时引用的编号不会因为多了一段文献表而错位。
+    """
+    if not wants_references(question) or not titles:
+        return snippets
+
+    text = await build_reference_snippet(db, set(titles.keys()), titles)
+    if not text:
+        return snippets
+
+    snippets.append(ContextSnippet(
+        index=len(snippets) + 1,
+        chunk_id="references",
+        paper_id=next(iter(titles)),
+        citation="参考文献列表",
+        text=text,
+    ))
+    return snippets
+
+
+def _norm(text: str) -> str:
+    """把文本压成只含小写字母数字，用于标题包含判断。"""
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+# 标题参与匹配的最小长度：过短的标题（如 BERT）容易在问题里误命中
+_MIN_TITLE_LEN = 12
+
+
+async def expand_scope_by_title(
+    db: AsyncSession, question: str, paper_ids: list[str] | None
+) -> tuple[list[str] | None, list[str]]:
+    """问题里明确提到某篇库内论文时，把它加入检索范围。
+
+    解决的问题：前端问答范围默认锁定「文库第一篇」，
+    用户问另一篇论文时，检索只在那篇里找，于是要么拒答，
+    要么更糟——回答了被锁定那篇论文的内容（看起来像答对了，
+    实际上答非所问，比拒答更容易误导人）。
+
+    做法与引用匹配一致：把标题归一化后判断是否出现在问题里。
+    只做「并集」不做「替换」：用户显式选中的论文不会被移除，
+    只把问题点名的那篇补进来。
+    返回 (新范围, 新增的 paper_id 列表)。
+    """
+    if not question:
+        return paper_ids, []
+
+    rows = (await db.execute(select(Paper.id, Paper.title))).all()
+    norm_q = _norm(question)
+
+    added: list[str] = []
+    current = list(paper_ids or [])
+    for pid, title in rows:
+        norm_title = _norm(title or "")
+        if len(norm_title) < _MIN_TITLE_LEN:
+            continue
+        if norm_title and norm_title in norm_q and pid not in current:
+            current.append(pid)
+            added.append(pid)
+
+    if not added:
+        return paper_ids, []
+
+    logger.info("问题点名了论文，已扩展检索范围: +%s", added)
+    return current, added
+
+
 def extract_marks(answer: str) -> list[int]:
     """按出现顺序抽出回答里的全部引用编号（含重复）。"""
     return [int(m) for m in _CITATION_RE.findall(answer or "")]
@@ -279,9 +485,11 @@ def looks_like_refusal(answer: str, citation_count: int) -> bool:
 
 # ---------------------------------------------------------------- 编排
 
-# 送给模型的片段数上限。太多会挤占上下文并引入噪声，
-# 实测 top_k=6 足以覆盖绝大多数单点问题。
-DEFAULT_TOP_K = 6
+# 送给模型的片段数上限。
+# 实测：top_k=6 时「训练 Base 模型用了多少 GPU」这类问题会拒答——
+# 需要的 5.3 节训练细节排在更后面；提高到 8 即可命中；
+# 再往上（10、12）答案不再变化，只是白耗 token，因此取 8。
+DEFAULT_TOP_K = 8
 
 
 async def answer(
@@ -301,6 +509,10 @@ async def answer(
     没有资料时让模型「自由发挥」是幻觉最主要的来源。
     """
     question = (question or "").strip()
+    # 记录调用方显式指定的范围（判断是否对比模式只看这个）
+    requested_ids = list(paper_ids or [])
+    # 问题点名了某篇论文时把它补进范围，避免锁定错论文导致答非所问
+    paper_ids, _added = await expand_scope_by_title(db, question, paper_ids)
     retrieved = await retrieval.retrieve(
         db, question, top_k=top_k, allow_vector=allow_vector, paper_ids=paper_ids
     )
@@ -319,9 +531,17 @@ async def answer(
 
     # 取命中片段涉及的论文标题：多篇对比时上下文里必须标出「这段来自哪篇」
     titles = await _paper_titles(db, {h.paper_id for h in retrieved.hits})
-    compare = len(titles) >= 2
+    # 是否启用对比提示词，只看「调用方显式指定了几篇」。
+    # 不能用命中片段覆盖的论文数：问题点名某篇论文时我们会自动扩展范围，
+    # 那只是为了让检索找对论文，并不意味着用户要做对比；
+    # 否则一个单篇问题会得到「各篇论文在……维度上」这种对比式回答。
+    compare = len(requested_ids) >= 2
 
-    snippets = build_snippets(retrieved.hits, titles)
+    # 首页块固定加入：标题、作者名单与机构是元信息类问题的唯一来源，
+    # 而语义检索不保证把它排进前列
+    front = await _front_chunks(db, set(titles.keys()))
+    snippets = merge_with_front_matter(retrieved.hits, titles, front)
+    snippets = await _maybe_add_references(db, question, snippets, titles)
     messages = build_messages(question, snippets, compare=compare)
     try:
         text = await llm.chat(messages)
@@ -403,6 +623,10 @@ async def answer_stream(
         yield {"type": "error", "message": "问题不能为空"}
         return
 
+    # 记录调用方显式指定的范围（判断是否对比模式只看这个）
+    requested_ids = list(paper_ids or [])
+    # 问题点名了某篇论文时把它补进范围，避免锁定错论文导致答非所问
+    paper_ids, _added = await expand_scope_by_title(db, question, paper_ids)
     retrieved = await retrieval.retrieve(
         db, question, top_k=top_k, allow_vector=allow_vector, paper_ids=paper_ids
     )
@@ -423,9 +647,12 @@ async def answer_stream(
         return
 
     titles = await _paper_titles(db, {h.paper_id for h in retrieved.hits})
-    compare = len(titles) >= 2
+    # 与 answer() 一致：对比模式只看调用方显式指定的论文数
+    compare = len(requested_ids) >= 2
 
-    snippets = build_snippets(retrieved.hits, titles)
+    front = await _front_chunks(db, set(titles.keys()))
+    snippets = merge_with_front_matter(retrieved.hits, titles, front)
+    snippets = await _maybe_add_references(db, question, snippets, titles)
     yield _snippet_event(snippets)
 
     messages = build_messages(question, snippets, compare=compare)

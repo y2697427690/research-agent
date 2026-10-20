@@ -1,4 +1,4 @@
-"""大模型客户端。
+﻿"""大模型客户端。
 
 只负责「怎么调模型」：连接、重试、超时、流式。
 不负责 prompt 构造与引用校验——那是 rag.py 的职责。
@@ -95,12 +95,14 @@ async def _create(messages: list[dict], *, temperature: float, max_tokens: int |
 async def chat(
     messages: list[dict],
     *,
-    temperature: float = 0.2,
+    temperature: float = 0.0,
     max_tokens: int | None = None,
 ) -> str:
     """一次性拿到完整回答。
 
-    temperature 默认 0.2：问答要的是稳定与忠实，不是创意。
+    temperature 默认 0：问答要的是可复现与忠实，不是创意。
+    0.2 时同一个问题、同一份资料，模型有时作答、有时拒答——
+    这类抖动会让「能力是否达标」的验证变得不可信，故取 0。
     温度高会让模型更爱自由发挥，与防幻觉的目标冲突。
     """
     try:
@@ -126,7 +128,7 @@ async def chat(
 async def stream_chat(
     messages: list[dict],
     *,
-    temperature: float = 0.2,
+    temperature: float = 0.0,
     max_tokens: int | None = None,
 ) -> AsyncIterator[str]:
     """流式生成，逐段产出文本增量。

@@ -48,7 +48,10 @@ window.App = window.App || {};
       scope: 'single',         // single(单篇) | multi(多篇)
       paperIds: [],            // 已选入上下文的论文
       thinking: false,
-      topK: 5,                 // 检索片段数（RAG 参数）
+      // 检索片段数：与后端 DEFAULT_TOP_K 对齐。
+      // 实测 5~6 时「Base 模型用了多少 GPU」这类问题会拒答，
+      // 8 能命中需要的训练细节段落，再往上答案不再变化。
+      topK: 8,
       showEvidence: true,      // 是否展示引用原文
     },
 
@@ -92,6 +95,29 @@ window.App = window.App || {};
      ------------------------------------------------------------------ */
   function hasApi() {
     return !!(App.api && typeof App.api.health === 'function');
+  }
+
+  /* ------------------------------------------------------------------
+     问题里是否点名了某篇库内论文
+     ------------------------------------------------------------------
+     问答范围默认锁定「文库第一篇」，用户问另一篇论文时，
+     后端会按问题把该篇补进检索范围；但界面上的「已选 N 篇」
+     仍显示旧论文，两边不一致容易让人以为答错了论文。
+     这里在发送前做同样的识别，直接切换界面上的选择。
+
+     判断方式与引用匹配一致：把标题归一化成只含小写字母数字后，
+     看它是否出现在问题文本里。标题过短（<12 字符）易误命中，跳过。 */
+  function normalizeText(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  function detectPaperInText(text) {
+    const q = normalizeText(text);
+    if (!q) return null;
+    return (state.papers || []).find((p) => {
+      const t = normalizeText(p.title);
+      return t.length >= 12 && q.indexOf(t) !== -1;
+    }) || null;
   }
 
   /* ---------------- 动作（业务逻辑） ---------------- */
@@ -599,6 +625,17 @@ window.App = window.App || {};
 
       await new Promise((resolve) => {
         // 按当前的问答范围传论文 id：
+        // 问题点名了某篇论文时，先把界面的问答范围切到那一篇。
+        // 否则会出现「界面写着《CLIP》，回答却在讲《Attention》」，
+        // 让人以为答错了论文。
+        const mentioned = detectPaperInText(q);
+        if (mentioned && state.qa.paperIds.indexOf(mentioned.id) === -1) {
+          state.qa.paperIds = [mentioned.id];
+          if (state.qa.scope === 'multi') state.qa.scope = 'single';
+          App.ui.toast('已自动把问答范围切换到《' + mentioned.title + '》', 'ok', 2600);
+          notify('chats');
+        }
+
         //   单篇模式 → 只传当前选中的那一篇
         //   多篇模式 → 传全部选中论文，后端据此切换为对比提示词
         // 不传时后端会检索全库，可能把不相关的论文也带进来
@@ -612,7 +649,7 @@ window.App = window.App || {};
         App.api.askStream(q, state.qa.topK, (event) => {
           if (event.type === 'citations') {
             // 先到的资料来源：让「检索命中 N 段」立刻显示出来
-            answerMsg.evidence = App.adapter.evidenceFromHits(
+            const snippets = App.adapter.evidenceFromHits(
               (event.snippets || []).map((s) => ({
                 chunk_id: s.chunk_id,
                 paper_id: s.paper_id,
@@ -623,6 +660,13 @@ window.App = window.App || {};
                 score: 0,
               }))
             );
+            // 两份数据要分开存：
+            //   snippets  = 检索到的全部片段（用于「检索到但未引用」的说明）
+            //   evidence  = 模型真正引用到的片段（用于角标与定位）
+            // 只存前者会让「模型拒答」看起来像「什么都没检索到」，
+            // 排查问题时会把方向带偏。
+            answerMsg.snippets = snippets;
+            answerMsg.evidence = snippets;
             answerMsg.thinking = false;
             notify('chats');
             return;
@@ -639,6 +683,9 @@ window.App = window.App || {};
             // done 里的 answer 是服务端净化过的：编造的引用编号已被移除，
             // 因此这里用完整文本覆盖流式阶段显示的内容
             answerMsg.text = event.answer;
+            // evidence 只保留「模型真正引用到」的片段；
+            // 全部检索结果仍留在 answerMsg.snippets 里，
+            // 这样界面能区分「没检索到」与「检索到了但模型没引用」
             answerMsg.evidence = App.adapter.evidenceFromHits(
               (event.citations || []).map((c) => ({
                 chunk_id: c.chunk_id,

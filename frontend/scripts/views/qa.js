@@ -260,7 +260,29 @@ window.App = window.App || {};
     }
     const last = chat.messages.filter((m) => m.role === 'assistant' && m.evidence && m.evidence.length).pop();
     if (!last) {
-      return App.ui.Out(h`<div class="muted small" style="padding:8px">本次回答未检索到相关片段。</div>`);
+      // 区分两种情况，否则排查时会被误导：
+      //   真没检索到 → 检索或索引有问题
+      //   检索到但模型没引用 → 检索没问题，是资料相关性或提示词的问题
+      const anyAssistant = chat.messages.filter((m) => m.role === 'assistant').pop();
+      const snippets = (anyAssistant && anyAssistant.snippets) || [];
+      if (snippets.length) {
+        return App.ui.Out(h`
+          <div class="muted small" style="padding:8px">
+            已检索到 ${snippets.length} 段原文，但模型未引用任何片段
+            （通常意味着它判断这些资料不足以支撑回答）。以下为检索结果：
+          </div>
+          ${U.raw(snippets.map((e, i) => h`
+            <div class="evi-card">
+              <div class="row gap-8">
+                <span class="cite">[${i + 1}]</span>
+                <span class="small ellipsis" style="font-weight:600">${paperTitle(e.paperId)}</span>
+              </div>
+              <div class="muted tiny mt-8">${e.section} · 第 ${e.page} 页</div>
+              <div class="evi-text mt-8">${e.text}</div>
+            </div>`).join(''))}
+        `);
+      }
+      return App.ui.Out(h`<div class="muted small" style="padding:8px">本次提问没有检索到任何原文片段。</div>`);
     }
     return App.ui.Out(last.evidence.map((e, i) => h`
       <div class="evi-card" id="evi-card-${i + 1}">
