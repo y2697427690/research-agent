@@ -372,16 +372,36 @@ App.VIEWS.forEach((v) => t('渲染视图 ' + v.id + '（' + v.title + '）', () 
 }));
 
 /* --- 2. 各视图的关键元素必须真的存在 --- */
-t('工作台：三个核心区块 + 解析质量表 + 统计数字', () => {
+t('工作台：主操作区 + 数据概览 + 最近动态（三段式）', () => {
   restore();
   renderView('dashboard');
-  ['文库概况', '解析质量一览', '能力地图'].forEach(mustText);
-  mustFindAll('tr[data-action="parse-detail"]', 30, '解析质量表行');
-  mustFindAll('.quick-card', 6, '快捷入口卡片');
-  mustFindAll('.cap-card', 6, '能力地图卡片');
+
+  // ① 主操作区：一句话定位 + 三个主按钮
+  mustFind('.hero', '主操作区');
+  mustText('把论文变成可问答');
+  mustFind('.hero-actions');
+  mustFindAll('.btn-lg', 3, '主操作按钮');
+
+  // ② 数据概览：四个大数字，且不再用卡片包起来
+  mustFindAll('.stat', 4, '概览数字');
   const total = App.store.state.papers.reduce((a, p) => a + p.pages, 0);
   if (total < 500) throw new Error('累计页数异常：' + total);
-  mustText('541', '最长书籍页数');
+
+  // ③④ 两张动态卡片：最近上传 / 需要注意
+  mustFindAll('.dash-card', 2, '动态卡片');
+  mustText('最近上传');
+  mustText('需要注意');
+
+  // ⑤ 底部一行链接替代原来的 6+6 张卡片
+  mustFindAll('.dash-link', 5, '底部链接');
+
+  // 旧版的两个区块已移除：解析质量表（多列为假数据）与能力地图（与说明页重复）
+  if (el.querySelector('.quick-card') || el.querySelector('.cap-card')) {
+    throw new Error('旧的快捷入口/能力地图卡片不应再出现在首页');
+  }
+  if (el.querySelector('tr[data-action="parse-detail"]')) {
+    throw new Error('解析质量表应已移除（其中图表/公式/参考文献三列后端不提供）');
+  }
 });
 
 t('文库：拖拽区 / 文件输入 / 列表容器 / 筛选框都在', () => {
