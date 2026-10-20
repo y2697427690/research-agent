@@ -206,7 +206,12 @@ window.App = window.App || {};
     const idx = {};
     nodes.forEach((n, i) => { idx[n.id] = i; });
 
-    for (let iter = 0; iter < 300; iter++) {
+    // 斥力常数原本按 20 个节点左右调过。节点上百时若不放大，
+    // 所有点会挤成一小团；节点多时也适当减少迭代次数以控制耗时。
+    const repelScale = Math.max(1, nodes.length / 40);
+    const iterations = nodes.length > 100 ? 200 : 300;
+
+    for (let iter = 0; iter < iterations; iter++) {
       const disp = nodes.map(() => ({ x: 0, y: 0 }));
       // 节点间斥力
       for (let i = 0; i < nodes.length; i++) {
@@ -215,7 +220,7 @@ window.App = window.App || {};
           let dx = a.x - b.x, dy = a.y - b.y;
           let d2 = dx * dx + dy * dy;
           if (d2 < 1) { dx = rnd() - 0.5; dy = rnd() - 0.5; d2 = 1; }
-          const f = 26000 / d2;
+          const f = (26000 * repelScale) / d2;
           const d = Math.sqrt(d2);
           disp[i].x += (dx / d) * f; disp[i].y += (dy / d) * f;
           disp[j].x -= (dx / d) * f; disp[j].y -= (dy / d) * f;
@@ -233,7 +238,7 @@ window.App = window.App || {};
         disp[j].x -= (dx / d) * f; disp[j].y -= (dy / d) * f;
       });
       // 向心力 + 位移限幅
-      const cool = 0.10 * (1 - iter / 300) + 0.01;
+      const cool = 0.10 * (1 - iter / iterations) + 0.01;
       nodes.forEach((n, i) => {
         disp[i].x += (W / 2 - pos[n.id].x) * 0.012;
         disp[i].y += (H / 2 - pos[n.id].y) * 0.012;
@@ -303,17 +308,31 @@ window.App = window.App || {};
       const c = color(n);
       const sel = st.graph.selectedId === n.id;
       const label = U.clip(n.title.replace(/（.*?）/, ''), 26);
+
+      // 外部文献（未入库）通常上百个，若都画标签会互相遮挡、整张图糊成一片。
+      // 只在三种情况下显示标签：已入库的论文、当前选中的节点、被多篇引用的外部文献。
+      // 其余节点仍可悬停查看完整标题（用 <title> 提供原生提示）。
+      const showLabel = n.inLibrary || sel || deg >= 2;
+
       nodeSvg +=
         '<g class="gnode" data-action="graph-select" data-id="' + n.id + '">' +
         (sel ? '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (r + 7) +
           '" fill="none" stroke="' + c + '" stroke-opacity=".45" stroke-width="2"/>' : '') +
         '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + r.toFixed(1) + '" fill="' + c +
-        '" fill-opacity="' + (n.core === 'peripheral' ? 0.45 : 0.9) + '" stroke="rgba(255,255,255,.35)"/>' +
-        '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - r - 7).toFixed(1) +
-        '" text-anchor="middle" font-size="10.5" fill="' + (sel ? '#eef1f8' : '#b7bed2') + '">' +
-        U.esc(label) + '</text>' +
-        '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3.5).toFixed(1) +
-        '" text-anchor="middle" font-size="9.5" fill="#0d1017" font-weight="700">' + (n.year % 100) + '</text>' +
+        '" fill-opacity="' + (n.inLibrary ? 0.9 : 0.55) + '" stroke="rgba(255,255,255,.35)"/>' +
+        '<title>' + U.esc(n.title) + (n.inLibrary ? '' : '（未入库）') + '</title>' +
+        (showLabel
+          ? '<text x="' + p.x.toFixed(1) + '" y="' + (p.y - r - 7).toFixed(1) +
+            '" text-anchor="middle" font-size="10.5" fill="' + (sel ? '#eef1f8' : '#b7bed2') + '">' +
+            U.esc(label) + '</text>'
+          : '') +
+        // 年份只对有年份的论文显示：外部文献没有解析年份，
+        // 原先直接取模会算成 0，节点里全是「0」既难看也没意义
+        (n.year
+          ? '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + 3.5).toFixed(1) +
+            '" text-anchor="middle" font-size="9.5" fill="#0d1017" font-weight="700">' +
+            (n.year % 100) + '</text>'
+          : '') +
         '</g>';
     });
 
