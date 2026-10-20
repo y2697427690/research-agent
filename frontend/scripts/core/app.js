@@ -275,6 +275,19 @@ window.App = window.App || {};
     const mod = v.view();
     const el = shellEls.view;
     const scrollTop = el.scrollTop;
+
+    // 问答页的滚动发生在消息区内部，不在 .view 上。
+    // 每次重绘都会销毁消息区元素、把它的 scrollTop 清零，
+    // 若不在重绘前记下来，流式输出期间用户会看到「跳回顶部」。
+    // 同时记录「重绘前是否贴底」：恢复位置后内容已变高，
+    // 只看位置会被误判成「用户在看历史」，从而停止自动跟随。
+    const inner = el.querySelector('[data-scroll-keep]');
+    if (inner) {
+      App.store.state.__innerScroll = inner.scrollTop;
+      App.store.state.__innerAtBottom =
+        inner.scrollHeight - inner.scrollTop - inner.clientHeight <= 80;
+    }
+
     // 切换页面对应的布局模式：填满模式关闭 .view 自身的滚动
     el.className = FILL_VIEWS[v.id] ? 'view view--fill' : 'view';
     el.innerHTML = '';

@@ -106,7 +106,7 @@ window.App = window.App || {};
 
         <!-- ================= 中栏：对话 ================= -->
         <section class="qa-main">
-          <div class="qa-stream" id="stream">
+          <div class="qa-stream" id="stream" data-scroll-keep>
             ${chat && chat.messages.length ? U.raw(chat.messages.map(msgHtml).join('')) : U.raw(welcomeHtml())}
           </div>
 
@@ -142,6 +142,18 @@ window.App = window.App || {};
     `;
 
     bindComposer(el);
+
+    // 恢复滚动位置：消息区元素是每次重绘新建的，scrollTop 天然为 0，
+    // 若不还原，流式输出期间用户会看到内容「跳回顶部」。
+    // app.js 在清空容器前把旧位置存到了 __innerScroll。
+    const saved = App.store.state.__innerScroll;
+    const streamEl = U.$('#stream', el);
+    if (streamEl && typeof saved === 'number') {
+      streamEl.scrollTop = saved;
+      // 恢复「是否贴底」的判断：内容比上次更高，单看位置会误判，
+      // 因此用重绘前记录的状态（__innerAtBottom）覆盖
+      stickToBottom = App.store.state.__innerAtBottom !== false;
+    }
 
     // 自动滚动策略：
     //   1) 发送前后：强制滚到底（让用户立刻看到新消息）
@@ -327,12 +339,20 @@ window.App = window.App || {};
 
     // 记录用户是否停在底部：流式输出时只有「本来就在底部」才自动跟随。
     // 否则用户向上翻看上面的问答会被不断拽回底部，非常烦人。
+    //
+    // 注意：不能在这里无条件把 stickToBottom 置为 true。
+    // 视图每个 token 都会整体重绘，bindComposer 也随之重跑；
+    // 若无条件重置，用户向上翻看的动作会在下一个 token 到来时被抹掉，
+    // 表现为「刚翻上去又被拽回底部」。
+    // 只有当前还没有滚动容器（首次进入页面）时才初始化为贴底。
     const stream = U.$('#stream', el);
-    if (stream) {
+    if (stream && !stream.dataset.bound) {
+      stream.dataset.bound = '1';
       stream.addEventListener('scroll', () => {
+        // 程序化滚动也会触发该事件，因此这里只在「用户真的离开底部」时
+        // 才把跟随关掉；接近底部时重新打开跟随
         stickToBottom = isNearBottom(stream);
       }, { passive: true });
-      stickToBottom = true;
     }
   }
 
@@ -365,17 +385,47 @@ window.App = window.App || {};
     App.store.notify('chats');
   }
 
+  /* 滚动跟随：每帧最多执行一次
+     --------------------------------------------------------------------------
+     后端可能一个字一个 token，一次回答会触发上百次渲染与滚动。
+     如果每次都直接写 scrollTop：
+       1) 同一帧里写多次，浏览器只认最后一次，前面的白算；
+       2) 位置反复变化会让滚动条滑块来回抽动，观感很差。
+     因此把「要滚动」的请求记录下来，合并到下一帧统一执行一次。
+     阈值 8px：内容只长了一两像素时不值得再滚一次。 */
+  let scrollRaf = 0;
+  let scrollAskForce = false;
+
   function scrollStream(force) {
+    if (force) scrollAskForce = true;
+    if (scrollRaf) return;                 // 本帧已排过队，合并即可
+    scrollRaf = window.requestAnimationFrame(() => {
+      scrollRaf = 0;
+      const wantForce = scrollAskForce;
+      scrollAskForce = false;
+      flushScroll(wantForce);
+    });
+  }
+
+  function flushScroll(force) {
     const s = U.$('#stream');
     if (!s) return;
-    // 问答页是「填满模式」：页面本身不滚动，滚动的是消息区。
-    // force=true 用于「刚发出提问」——此时无论如何都要看到新消息；
-    // 普通调用（流式输出中）只在用户本来就在底部时才跟随，
-    // 免得用户向上翻看历史时被不断拽回底部。
-    if (force || stickToBottom || isNearBottom(s)) {
-      s.scrollTop = s.scrollHeight;
+
+    const maxTop = s.scrollHeight - s.clientHeight;
+    const gap = maxTop - s.scrollTop;
+
+    // 本来就不该跟随：用户正在向上翻看历史
+    if (!force && !stickToBottom && !isNearBottom(s)) return;
+
+    // 已经贴在底部（小于阈值）就不写了，避免无意义的位置变动
+    if (gap <= 8) {
       stickToBottom = true;
+      return;
     }
+
+    // 瞬时定位，不使用平滑滚动（见 views.css 中 .qa-stream 的说明）
+    s.scrollTop = maxTop;
+    stickToBottom = true;
   }
 
   App.views = App.views || {};
