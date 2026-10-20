@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    app.css — 应用外壳布局 + 公共组件样式
    ----------------------------------------------------------------------------
    包含三部分：
@@ -68,7 +68,7 @@
   position: relative;
 }
 .nav-item:hover { background: var(--bg-2); color: var(--text-0); }
-.nav-item.active { background: var(--brand-soft); color: #fff; font-weight: 600; }
+.nav-item.active { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
 .nav-item.active::before {
   content: "";
   position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
@@ -80,9 +80,9 @@
 .nav-badge {
   font-size: 10.5px; font-weight: 600;
   padding: 1px 6px; border-radius: var(--r-pill);
-  background: var(--brand-soft); color: var(--brand-400);
+  background: var(--brand-soft); color: var(--brand-on-soft);
 }
-.nav-item.active .nav-badge { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.nav-item.active .nav-badge { background: var(--sel-chip-bg); color: var(--sel-chip-fg); }
 
 /* ---- 侧边栏底部：模型/用户状态 ---- */
 .side-foot {
@@ -120,11 +120,11 @@
   gap: 14px;
   padding: 0 20px;
   border-bottom: 1px solid var(--line);
-  background: rgba(19, 23, 34, 0.86);
+  background: var(--topbar-bg);
   backdrop-filter: blur(12px);
 }
-.topbar h1 { font-size: 16px; font-weight: 650; margin: 0; }
-.topbar .subtitle { font-size: 12px; color: var(--text-2); }
+.topbar h1 { font-size: var(--fs-h2); font-weight: 650; margin: 0; }
+.topbar .subtitle { font-size: var(--fs-xs); color: var(--text-2); }
 .search {
   display: flex; align-items: center; gap: 8px;
   background: var(--bg-2);
@@ -233,7 +233,7 @@
   background: var(--bg-3); color: var(--text-1);
   white-space: nowrap;
 }
-.badge-brand { background: var(--brand-soft); color: var(--brand-400); }
+.badge-brand { background: var(--brand-soft); color: var(--brand-on-soft); }
 .badge-ok { background: var(--ok-soft); color: var(--ok); }
 .badge-warn { background: var(--warn-soft); color: var(--warn); }
 .badge-danger { background: var(--danger-soft); color: var(--danger); }
@@ -316,7 +316,7 @@
 /* ---- 模态框 ---- */
 .mask {
   position: fixed; inset: 0; z-index: 90;
-  background: rgba(6, 8, 13, 0.7);
+  background: var(--overlay);
   backdrop-filter: blur(3px);
   display: grid; place-items: center;
   animation: fade 0.16s var(--ease);

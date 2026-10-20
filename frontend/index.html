@@ -8,6 +8,20 @@
 <link rel="stylesheet" href="styles/theme.css" />
 <link rel="stylesheet" href="styles/app.css" />
 <link rel="stylesheet" href="styles/views.css" />
+<script>
+  /* 主题必须在首次绘制之前确定，否则会先按默认色画一帧再切到深色，
+     出现明显的「闪白/闪黑」。这里只做读取与写入属性，不依赖任何脚本。 */
+  (function () {
+    try {
+      var saved = localStorage.getItem('app.theme');
+      if (saved === 'dark' || saved === 'light') {
+        document.documentElement.dataset.theme = saved;
+      }
+    } catch (e) {
+      /* localStorage 被禁用时忽略，使用默认浅色 */
+    }
+  })();
+</script>
 </head>
 <body>
 

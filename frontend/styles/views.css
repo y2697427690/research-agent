@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views.css — 各业务视图专属样式
    ----------------------------------------------------------------------------
    顺序与侧边栏一致：
@@ -83,7 +83,7 @@
   flex-shrink: 0;
   font-size: 11px; font-weight: 700;
   padding: 1px 7px; border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, .1);
+  background: var(--track);
   color: var(--text-1);
 }
 
@@ -170,7 +170,7 @@
   transition: background .14s var(--ease);
 }
 .toc-item:hover { background: var(--bg-2); color: var(--text-0); }
-.toc-item.active { background: var(--brand-soft); color: #fff; }
+.toc-item.active { background: var(--sel-bg); color: var(--sel-fg); }
 .toc-item.lv2 { padding-left: 18px; }
 .toc-item.lv3 { padding-left: 30px; font-size: 12px; color: var(--text-2); }
 .toc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
@@ -373,13 +373,13 @@
   transition: background .14s var(--ease);
 }
 .qa-paper:hover { background: var(--bg-2); }
-.qa-paper.on { background: var(--brand-soft); color: #fff; }
+.qa-paper.on { background: var(--sel-bg); color: var(--sel-fg); }
 .qa-paper .chk {
   width: 15px; height: 15px; flex-shrink: 0;
   border-radius: 4px; border: 1px solid var(--line-strong);
   display: grid; place-items: center; font-size: 10px;
 }
-.qa-paper.on .chk { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
+.qa-paper.on .chk { background: var(--sel-chip-bg); border-color: var(--sel-chip-bg); color: var(--sel-chip-fg); }
 
 .qa-chat {
   display: flex; align-items: center; gap: 8px;
@@ -388,7 +388,7 @@
   font-size: 12.5px; color: var(--text-1);
 }
 .qa-chat:hover { background: var(--bg-2); }
-.qa-chat.on { background: var(--brand-soft); color: #fff; }
+.qa-chat.on { background: var(--sel-bg); color: var(--sel-fg); }
 
 /* ---- 对话流 ---- */
 .qa-main { display: flex; flex-direction: column; min-height: 0; }
@@ -583,7 +583,7 @@
   width: 24px; height: 24px; flex-shrink: 0;
   border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--brand-soft); color: var(--brand-400);
+  background: var(--brand-soft); color: var(--brand-on-soft);
   font-size: 11.5px; font-weight: 700;
 }
 .flow-arrow { color: var(--text-3); font-size: 13px; }

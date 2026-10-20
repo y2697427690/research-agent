@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    app.js — 应用入口：视图注册、路由、外壳渲染
    ----------------------------------------------------------------------------
    渲染流程（单向数据流）：
@@ -183,6 +183,7 @@ window.App = window.App || {};
 
       /* ---- 图谱 ---- */
       case 'graph-select': S.selectNode(data.id); break;
+      case 'toggle-theme': toggleTheme(); break;
       case 'graph-layout': S.setGraphLayout(data.layout); break;
       case 'graph-toggle-core': S.toggleCoreHighlight(); break;
       case 'graph-toggle-external':
@@ -261,8 +262,32 @@ window.App = window.App || {};
           <span class="muted">⌕</span>
           <input placeholder="搜索文库中的论文、作者、关键词…" data-bind="search" />
         </div>
+        <button class="btn btn-ghost" data-action="toggle-theme" title="切换浅色 / 深色主题">
+          ${currentTheme() === 'dark' ? '☀ 浅色' : '☾ 深色'}
+        </button>
         <button class="btn btn-ghost" data-action="pick-files">⇪ 上传 PDF</button>
         <button class="btn btn-primary" data-action="go" data-route="qa">✦ 开始问答</button>`;
+  }
+
+  /* ---------------- 主题切换 ----------------
+     默认浅色（阅读友好），深色作为可选项。
+     选择写入 localStorage，index.html 的头部脚本会在首次绘制前应用，
+     因此刷新页面不会先闪一下另一种主题。 */
+  function currentTheme() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  }
+
+  function toggleTheme() {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem('app.theme', next);
+    } catch (e) {
+      /* 隐私模式下可能不可写，忽略即可，仅本次会话生效 */
+    }
+    renderTopbar();   // 更新按钮文字
+    // 图谱用 SVG 绘制，节点配色写死在视图里，换主题后需要重绘一次
+    if (App.store.state.route === 'graph') App.store.notify('graph');
   }
 
   /* 需要「填满一屏、内部各自滚动」的视图。
