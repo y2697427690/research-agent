@@ -34,6 +34,8 @@ window.App = window.App || {};
   ];
 
   let pendingScroll = false;
+  // 用户是否停在消息区底部（流式输出时据此决定是否自动跟随）
+  let stickToBottom = true;
 
   /* ==========================================================================
      1. 主渲染
@@ -140,7 +142,18 @@ window.App = window.App || {};
     `;
 
     bindComposer(el);
-    if (pendingScroll) { scrollStream(); pendingScroll = false; }
+
+    // 自动滚动策略：
+    //   1) 发送前后：强制滚到底（让用户立刻看到新消息）
+    //   2) 流式输出中：持续跟随，否则文字会跑到可视区外
+    //   3) 用户手动向上翻看历史时：不打扰（见 bindComposer 里的贴底判断）
+    const streaming = chat && chat.messages.some((m) => m.streaming);
+    if (pendingScroll) {
+      scrollStream(true);          // 刚发出提问：强制看到新消息
+      pendingScroll = false;
+    } else if (streaming) {
+      scrollStream(false);         // 流式增量：只在用户停在底部时跟随
+    }
   }
 
   /* ==========================================================================
@@ -289,6 +302,22 @@ window.App = window.App || {};
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
     });
     if (input.dataset.focus === '1') input.focus();
+
+    // 记录用户是否停在底部：流式输出时只有「本来就在底部」才自动跟随。
+    // 否则用户向上翻看上面的问答会被不断拽回底部，非常烦人。
+    const stream = U.$('#stream', el);
+    if (stream) {
+      stream.addEventListener('scroll', () => {
+        stickToBottom = isNearBottom(stream);
+      }, { passive: true });
+      stickToBottom = true;
+    }
+  }
+
+  /** 距离底部 80px 以内视为「停在底部」 */
+  function isNearBottom(el, threshold) {
+    const t = threshold == null ? 80 : threshold;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= t;
   }
 
   function sendFromInput() {
@@ -314,11 +343,16 @@ window.App = window.App || {};
     App.store.notify('chats');
   }
 
-  function scrollStream() {
+  function scrollStream(force) {
     const s = U.$('#stream');
-    if (s) {
-      const view = s.closest('.view');
-      if (view) view.scrollTop = view.scrollHeight;
+    if (!s) return;
+    // 问答页是「填满模式」：页面本身不滚动，滚动的是消息区。
+    // force=true 用于「刚发出提问」——此时无论如何都要看到新消息；
+    // 普通调用（流式输出中）只在用户本来就在底部时才跟随，
+    // 免得用户向上翻看历史时被不断拽回底部。
+    if (force || stickToBottom || isNearBottom(s)) {
+      s.scrollTop = s.scrollHeight;
+      stickToBottom = true;
     }
   }
 

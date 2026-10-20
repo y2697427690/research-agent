@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views.css — 各业务视图专属样式
    ----------------------------------------------------------------------------
    顺序与侧边栏一致：
@@ -597,3 +597,75 @@
   color: var(--text-1);
 }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   问答页：高度受限 + 内部滚动
+   --------------------------------------------------------------------------
+   为什么需要这一组覆盖：
+   默认布局里 .view 是唯一滚动容器，而 .qa-layout 用 align-items: start，
+   中间列的高度始终等于内容高度，因此消息越多、页面越长，
+   滚轮滚的是整页——标题被顶出视口，输入框也跟着整页移动。
+
+   这里把问答页改成「一屏内三列各自滚动」：
+     .view--fill        关闭整页滚动
+     .qa-layout         列拉伸到满高
+     .qa-stream         消息区独立滚动（overscroll-behavior 防止滚到底带动父级）
+     .qa-composer       取消 sticky，固定在卡片底部
+   ========================================================================== */
+.view--fill .qa-layout {
+  align-items: stretch;   /* 覆盖原来的 align-items: start */
+  min-height: 0;
+}
+.view--fill .qa-side,
+.view--fill .qa-main,
+.view--fill .qa-evidence {
+  min-height: 0;
+  max-height: 100%;
+}
+/* 左右两栏内容可能很长，各自内部滚动 */
+.view--fill .qa-side,
+.view--fill .qa-evidence {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.view--fill .qa-main {
+  overflow: hidden;
+  /* 屏幕很矮时也要给消息区留出可用高度，否则一进来只剩一条缝 */
+  min-height: 320px;
+}
+.view--fill .qa-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* 滚到底不再带动父级/整页 */
+  padding-right: 6px;             /* 滚动条不压住气泡 */
+  scroll-behavior: smooth;
+}
+/* 输入区固定在卡片底部：取消 sticky，改用 flex-shrink: 0 */
+.view--fill .qa-composer {
+  position: static;
+  bottom: auto;
+  flex-shrink: 0;
+  margin-top: 12px;
+}
+/* 输入框自身也有高度上限，超高时内部滚动 */
+.view--fill .qa-composer .textarea {
+  max-height: 132px;
+  overflow-y: auto;
+}
+/* 消息区滚动条：细一点，避免挤占宽度 */
+.view--fill .qa-stream::-webkit-scrollbar { width: 8px; }
+.view--fill .qa-stream::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-pill);
+}
+.view--fill .qa-stream::-webkit-scrollbar-track { background: transparent; }
+
+/* 屏幕很矮时的兜底：允许整页滚动。
+   填满模式把小屏上的消息区压到最小高度后可能放不下输入框，
+   宁可让页面滚，也不能让输入框被裁掉。 */
+@media (max-height: 620px) {
+  .view--fill { overflow-y: auto; }
+  .view--fill .qa-stream { max-height: 60vh; }
+}

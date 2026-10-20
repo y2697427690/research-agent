@@ -265,11 +265,18 @@ window.App = window.App || {};
         <button class="btn btn-primary" data-action="go" data-route="qa">✦ 开始问答</button>`;
   }
 
+  /* 需要「填满一屏、内部各自滚动」的视图。
+     这些页面里的内容区（如问答的消息列表）应该自己滚动，
+     而不是让整个页面跟着滚——否则滚轮会把标题栏一起带走。 */
+  const FILL_VIEWS = { qa: true };
+
   function renderView() {
     const v = viewById(App.store.state.route);
     const mod = v.view();
     const el = shellEls.view;
     const scrollTop = el.scrollTop;
+    // 切换页面对应的布局模式：填满模式关闭 .view 自身的滚动
+    el.className = FILL_VIEWS[v.id] ? 'view view--fill' : 'view';
     el.innerHTML = '';
     if (mod && typeof mod.render === 'function') {
       mod.render(el);
