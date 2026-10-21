@@ -1,4 +1,4 @@
-"""FastAPI 应用入口
+﻿"""FastAPI 应用入口
 
 启动方式（在backend目录，虚拟环境已激活）
      uvicorn app.api.main:app --reload  --port 8000
@@ -8,6 +8,7 @@
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -97,6 +98,27 @@ def create_app() ->FastAPI:
         )
 
     app.include_router(api_router, prefix="/api/v1")
+
+    # ---- 前端静态页面（可选挂载） ----
+    # 线上服务器只有 uvicorn 在 8000 端口，没有 nginx，80 端口是空的，
+    # 所以「前端文件在仓库里更新了、但访问不到」这件事一直没被发现。
+    # 这里直接把仓库里的 frontend/ 挂到根路径，复用已开放的 8000 端口：
+    #   http://<ip>:8000/          → 前端页面
+    #   http://<ip>:8000/docs      → 接口文档
+    #   http://<ip>:8000/api/v1/…  → 接口
+    # 必须放在最后注册：mount("/") 会兜住所有未匹配请求，
+    # 先注册的 /api、/docs、/static 仍然优先命中。
+    frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
+    if frontend_dir.is_dir():
+        app.mount(
+            "/",
+            StaticFiles(directory=str(frontend_dir), html=True),
+            name="frontend",
+        )
+        logger.info("已挂载前端静态目录: %s", frontend_dir)
+    else:
+        logger.warning("未找到前端目录，跳过挂载: %s", frontend_dir)
+
     return app
 
 

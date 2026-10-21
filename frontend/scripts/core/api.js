@@ -22,11 +22,30 @@ window.App = window.App || {};
   const DEFAULT_LOCAL = 'http://127.0.0.1:8000/api/v1';
   const DEFAULT_ONLINE = 'http://47.96.97.141:8000/api/v1';
 
+  /**
+   * 决定后端地址，优先级从高到低：
+   *   1. localStorage 里手动设置的 API_BASE（调试用）
+   *   2. 页面本身由后端托管（http/https 且同端口有 /api）→ 直接用同源，
+   *      这样换 IP、换域名、经反向代理访问都不用改代码
+   *   3. 本机开发 → 127.0.0.1:8000
+   *   4. 其余情况（例如直接用 file:// 打开本地文件）→ 线上服务器
+   *
+   * 第 2 条是后加的：后端现在直接托管 frontend/ 目录，
+   * 若仍按 hostname 白名单判断，用别的 IP 或域名访问时就会连到写死的地址。
+   */
   function resolveBase() {
     const saved = localStorage.getItem('API_BASE');
     if (saved) return saved.replace(/\/$/, '');
+
+    const proto = location.protocol;
     const host = location.hostname;
+    const servedByHttp = proto === 'http:' || proto === 'https:';
     const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+
+    if (servedByHttp && !isLocal) {
+      // 页面是从某个 http(s) 地址打开的，且不是本机 → 同源调用
+      return location.origin.replace(/\/$/, '') + '/api/v1';
+    }
     return isLocal ? DEFAULT_LOCAL : DEFAULT_ONLINE;
   }
 
