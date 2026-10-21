@@ -1,4 +1,4 @@
-﻿"""RAG 问答：把检索结果交给大模型生成带引用的回答。
+"""RAG 问答：把检索结果交给大模型生成带引用的回答。
 
 防幻觉的三层设计：
     第一层  检索无命中 → 不调用模型，直接回复「资料中没有相关内容」
@@ -325,8 +325,11 @@ async def build_reference_snippet(
         )
 
     matched = [(pid, idx, raw) for pid, idx, raw in rows if matches(raw)]
-    # 过滤后太少（可能关键词没写对）就退回全部，宁可多给也不要空手
-    if len(matched) < 3:
+    # 只有「完全没命中」才退回全量。
+    # 曾写成「命中不足 3 条就退回」，结果反而更糟：
+    # 目标条目通常只命中 1~2 条，退回全量后又变回按顺序截断，
+    # 需要的条目照样排在 80 行之外。命中少恰恰说明筛对了。
+    if not matched:
         matched = list(rows)
 
     limit = 40 if len(matched) < len(rows) else 80
