@@ -68,6 +68,9 @@ def main() -> int:
     args = ap.parse_args()
 
     base = args.base_url.rstrip("/")
+    # 前端页面挂在站点根路径，而 base 是 API 前缀（…/api/v1）。
+    # 前端检查必须去掉 /api/v1 后再请求，否则会查到 404。
+    site = base[:-len("/api/v1")] if base.endswith("/api/v1") else base
     pdf = Path(args.pdf)
     c = Checker()
 
@@ -300,6 +303,37 @@ def main() -> int:
                       % (stamps[0], time.perf_counter() - t0))
         except httpx.HTTPError as exc:
             c.check("SSE 流式请求", False, str(exc)[:120])
+
+        # ------------------------------------------------------------------
+        # 11. 前端页面
+        #
+        # 这一段是补上来的：此前验证脚本只测 API，于是「线上只有接口、
+        # 页面根本没部署出去」这件事一直没被发现——服务器上从来没有 nginx，
+        # 80 端口空着，而所有人都以为网站是好的。
+        # 结论：验证必须覆盖「用户实际打开的那个地址」。
+        # ------------------------------------------------------------------
+        c.section("11. 前端页面（用户实际打开的地址）")
+        try:
+            r = client.get(site + "/")
+            ok = r.status_code == 200 and "<title>" in r.text
+            c.check("根路径返回页面", ok, "HTTP %s" % r.status_code)
+            # 主题初始化脚本是近期版本才有的标记，用它判断前端是否为最新构建
+            has_theme_script = "app.theme" in r.text
+            c.check("前端为最新版本（含主题初始化脚本）",
+                    has_theme_script,
+                    "已包含 app.theme" if has_theme_script
+                    else "index.html 中未找到 app.theme，前端可能是旧版本")
+            for asset in ("/styles/theme.css", "/scripts/core/app.js",
+                          "/scripts/core/api.js"):
+                a = client.get(site + asset)
+                c.check("静态资源可访问 %s" % asset,
+                        a.status_code == 200 and len(a.text) > 1000,
+                        "HTTP %s, %d 字节" % (a.status_code, len(a.text)))
+            app_js = client.get(site + "/scripts/core/app.js").text
+            c.check("前端脚本为最新版本（含主题切换逻辑）",
+                    "toggle-theme" in app_js)
+        except httpx.HTTPError as exc:
+            c.check("前端页面请求", False, str(exc)[:120])
 
     return c.summary()
 
