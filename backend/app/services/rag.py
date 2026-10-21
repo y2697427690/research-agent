@@ -324,18 +324,33 @@ async def build_reference_snippet(
             t in low for t in terms
         )
 
-    matched = [(pid, idx, raw) for pid, idx, raw in rows if matches(raw)]
+    # 排除「问题点名的那篇论文」自己的文献表。
+    # 问「关于 Layer Normalization 的参考文献」时，
+    # 《Layer Normalization》这篇的文献表里当然不会有它自己，
+    # 把它排在最前面只会误导模型（实测它就据此判为「资料不足」）。
+    norm_q = _norm(question)
+    skip_ids: set[str] = set()
+    for pid, title in titles.items():
+        nt = _norm(title or "")
+        if len(nt) >= _MIN_TITLE_LEN and nt and nt in norm_q:
+            skip_ids.add(pid)
+    scoped = [r for r in rows if r[0] not in skip_ids] or list(rows)
+
+    matched = [(pid, idx, raw) for pid, idx, raw in scoped if matches(raw)]
     # 只有「完全没命中」才退回全量。
     # 曾写成「命中不足 3 条就退回」，结果反而更糟：
     # 目标条目通常只命中 1~2 条，退回全量后又变回按顺序截断，
     # 需要的条目照样排在 80 行之外。命中少恰恰说明筛对了。
     if not matched:
-        matched = list(rows)
+        matched = list(scoped)
+
+    # 更短的条目通常更精准（完整引用条目 vs 被正文包裹的残块），排前面
+    matched.sort(key=lambda r: len(r[2] or ""))
 
     limit = 40 if len(matched) < len(rows) else 80
     lines: list[str] = []
     current = None
-    for pid, idx, raw in matched:
+    for pid, _idx, raw in matched:
         if len(lines) > limit:
             lines.append("……（其余条目略）")
             break
@@ -343,7 +358,10 @@ async def build_reference_snippet(
             current = pid
             lines.append(f"【《{titles.get(pid, pid)}》的参考文献】")
         text = (raw or "").strip().replace("\n", " ")
-        lines.append(f"[{idx}] {text[:300]}")
+        # 去掉条目自带的编号：模型看到的每段资料本身已有一个引用编号，
+        # 条目里再出现 "[1] [1] …" 会让它混淆"这是第几条资料"还是"第几条文献"。
+        text = re.sub(r"^(?:\[\d+\]\s*)+", "", text)
+        lines.append(f"- {text[:300]}")
 
     return "\n".join(lines) if lines else None
 
