@@ -237,11 +237,21 @@ async def retrieve(
     depth_boost = 4 if scope_ids else 1
     candidate_k = max(top_k * CANDIDATE_MULTIPLIER, MIN_CANDIDATES) * depth_boost
 
-    # 每篇论文的片段配额：保证对比的双方都能进上下文。
-    # 单篇或无范围限制时不启用。
+    # 每篇论文的片段配额。
+    #   指定了论文（多篇对比）：每篇保底 top_k/篇数 条，保证双方都有材料；
+    #   未指定论文（全库检索）：每篇最多 3~4 条，避免被单篇垄断。
+    #
+    # 全库限流是实测出来的：问「Layer Normalization 在 Transformer 中放在什么位置」时，
+    # 某篇论文（标题与问题语义几乎一致）的前 20 条命中全部来自它自己，
+    # 其它论文一条都进不来；而它恰好解析质量只有 0.44、章节全丢、块内容残缺，
+    # 模型拿着 20 条残块只能拒答。按论文限流后，ViT / Attention 的干净片段才有机会进入。
     per_paper = 0
     if scope_ids:
         per_paper = max(2, -(-top_k // len(scope_ids)))   # 向上取整
+    else:
+        paper_count = sum(1 for _ in {c.paper_id for c in meta.values()})
+        if paper_count >= 4:
+            per_paper = max(3, top_k // 2)
 
     rankings: dict[str, list[str]] = {}
     degraded: str | None = None
@@ -253,12 +263,19 @@ async def retrieve(
     bm25_hits = bm25.search(query, top_k=candidate_k)
     if scope_ids:
         bm25_hits = [h for h in bm25_hits if h.chunk.paper_id in scope_ids]
+    if per_paper:
         bm25_hits = _take_per_paper(
             bm25_hits, lambda h: h.chunk.paper_id, per_paper
         )
     if bm25_hits:
+        # 判据用「前若干个命中的最强词 IDF」，而不是只看第一名。
+        # 只看第一名的问题：排名第一的块可能恰好只匹配到 "layer" 这类高频词，
+        # 于是整条关键词检索被判定为无信息量而跳过；
+        # 而其实查询里的 "normalization" 是能与正文精确对上的。
+        head = bm25_hits[:5]
         top_idf = max(
-            (bm25.idf(t) for t in bm25_hits[0].matched_terms), default=0.0
+            (bm25.idf(t) for h in head for t in h.matched_terms),
+            default=0.0,
         )
         ceiling = bm25.max_idf
         ratio = (top_idf / ceiling) if ceiling > 0 else 0.0
@@ -283,8 +300,9 @@ async def retrieve(
                 for i, _ in vector_hits
                 if scope_ids is None or vector.chunks[i].paper_id in scope_ids
             ]
-            if scope_ids:
-                # 按论文配额裁剪，避免语义最贴近的一篇占据全部名额
+            if per_paper:
+                # 按论文配额裁剪：多篇对比时保证双方都在场，
+                # 全库检索时避免语义最贴近的一篇占据全部名额
                 ids = _take_per_paper(
                     ids, lambda cid: meta[cid].paper_id, per_paper
                 )

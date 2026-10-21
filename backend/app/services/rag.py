@@ -367,6 +367,15 @@ async def expand_scope_by_title(
     if not question:
         return paper_ids, []
 
+    # 调用方没指定范围（= 全库检索）时直接返回：
+    # 全库本来就能搜到任何论文，再做「扩展」只会帮倒忙。
+    # 实测踩过：问「Layer Normalization 在 Transformer 中放在什么位置」，
+    # 库里恰好有一篇论文标题就叫《Layer Normalization》，
+    # 范围被收窄成只搜那一篇——而答案在另一篇里，结果必然拒答。
+    # 这条规则只适用于「已锁定范围、但锁错了论文」的场景。
+    if not paper_ids:
+        return paper_ids, []
+
     rows = (await db.execute(select(Paper.id, Paper.title))).all()
     norm_q = _norm(question)
 
