@@ -1,4 +1,4 @@
-"""RAG 问答：把检索结果交给大模型生成带引用的回答。
+﻿"""RAG 问答：把检索结果交给大模型生成带引用的回答。
 
 防幻觉的三层设计：
     第一层  检索无命中 → 不调用模型，直接回复「资料中没有相关内容」
@@ -277,13 +277,23 @@ def wants_references(question: str) -> bool:
 
 
 async def build_reference_snippet(
-    db: AsyncSession, paper_ids: set[str], titles: dict[str, str]
+    db: AsyncSession,
+    paper_ids: set[str],
+    titles: dict[str, str],
+    question: str = "",
 ) -> str | None:
-    """把指定论文的参考文献列表拼成一段资料文本。
+    """把参考文献拼接成一段资料文本。
 
     数据来自 citations 表（抽取引用关系时已落库的参考文献原文），
-    不需要重新解析 PDF。每条截断到 300 字符，整体不超过 80 条，
-    避免一份超长文献表把上下文挤爆。
+    不需要重新解析 PDF。
+
+    为什么要按问题关键词筛选：
+    全库检索时 titles 里可能有七八篇论文，每篇几十条文献，
+    总量上千行。原先只截断到 80 行 —— 需要的条目往往排在第 80 行之后，
+    被「其余条目略」直接吃掉，于是「列出关于 X 的参考文献」反而答不出。
+    实测：8 篇论文时问 Layer Normalization 的参考文献就因此失败。
+    现在先用问题里的英文词（如 layer / normalization）过滤条目，
+    命中不足时再退回按顺序取前若干条。
     """
     if not paper_ids:
         return None
@@ -300,10 +310,30 @@ async def build_reference_snippet(
     if not rows:
         return None
 
+    # 从问题里抽英文词作为过滤条件：中文提问英文论文时，
+    # 专有名词（Layer Normalization / BERT）通常是英文原词。
+    terms = [
+        t.casefold() for t in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", question or "")
+    ]
+
+    def matches(raw: str) -> bool:
+        if not terms:
+            return True
+        low = (raw or "").casefold()
+        return all(t in low for t in terms) if len(terms) >= 2 else any(
+            t in low for t in terms
+        )
+
+    matched = [(pid, idx, raw) for pid, idx, raw in rows if matches(raw)]
+    # 过滤后太少（可能关键词没写对）就退回全部，宁可多给也不要空手
+    if len(matched) < 3:
+        matched = list(rows)
+
+    limit = 40 if len(matched) < len(rows) else 80
     lines: list[str] = []
     current = None
-    for pid, idx, raw in rows:
-        if len(lines) > 80:
+    for pid, idx, raw in matched:
+        if len(lines) > limit:
             lines.append("……（其余条目略）")
             break
         if pid != current:
@@ -320,23 +350,37 @@ async def _maybe_add_references(
     question: str,
     snippets: list[ContextSnippet],
     titles: dict[str, str],
+    scope_ids: set[str] | None = None,
 ) -> list[ContextSnippet]:
     """问题涉及参考文献时，在末尾追加一段参考文献列表。
 
     追加在最后而不是最前：正文片段优先占编号，
     模型回答正文问题时引用的编号不会因为多了一段文献表而错位。
+
+    查找范围：调用方指定了论文范围就用范围，否则用**全库**。
+    不能只用「命中的论文」——实测问「列出关于 Layer Normalization 的参考文献」，
+    真正的引用条目在 Attention 那篇的文献表里，但该篇不在语义检索的命中集合中，
+    于是文献表里只有别的论文、当然找不到目标条目。
     """
-    if not wants_references(question) or not titles:
+    if not wants_references(question):
         return snippets
 
-    text = await build_reference_snippet(db, set(titles.keys()), titles)
+    if scope_ids is None:
+        scope_ids = set((await db.execute(select(Paper.id))).scalars().all())
+    if not scope_ids:
+        return snippets
+
+    # 标题映射需要覆盖所有参与检索的论文，而不只是命中片段涉及的
+    ref_titles = await _paper_titles(db, scope_ids)
+
+    text = await build_reference_snippet(db, scope_ids, ref_titles, question)
     if not text:
         return snippets
 
     snippets.append(ContextSnippet(
         index=len(snippets) + 1,
         chunk_id="references",
-        paper_id=next(iter(titles)),
+        paper_id=next(iter(scope_ids)),
         citation="参考文献列表",
         text=text,
     ))
@@ -498,10 +542,12 @@ def looks_like_refusal(answer: str, citation_count: int) -> bool:
 # ---------------------------------------------------------------- 编排
 
 # 送给模型的片段数上限。
-# 实测：top_k=6 时「训练 Base 模型用了多少 GPU」这类问题会拒答——
-# 需要的 5.3 节训练细节排在更后面；提高到 8 即可命中；
-# 再往上（10、12）答案不再变化，只是白耗 token，因此取 8。
-DEFAULT_TOP_K = 8
+# 实测演进（论文库从 6 篇扩到 8 篇、1709 块）：
+#   6 条：「训练 Base 模型用了多少 GPU」所需的 5.2 节排不进来，拒答；
+#   8 条：6 篇时够用，8 篇时仍拒答；
+#  12 条：8 篇下可稳定命中该段落。
+# 再往上（16、20）答案不再变化，只是白耗 token，因此取 12。
+DEFAULT_TOP_K = 12
 
 
 async def answer(
@@ -522,6 +568,7 @@ async def answer(
     """
     question = (question or "").strip()
     # 记录调用方显式指定的范围（判断是否对比模式只看这个）
+    scope_ids = set(paper_ids) if paper_ids else None
     requested_ids = list(paper_ids or [])
     # 问题点名了某篇论文时把它补进范围，避免锁定错论文导致答非所问
     paper_ids, _added = await expand_scope_by_title(db, question, paper_ids)
@@ -553,7 +600,7 @@ async def answer(
     # 而语义检索不保证把它排进前列
     front = await _front_chunks(db, set(titles.keys()))
     snippets = merge_with_front_matter(retrieved.hits, titles, front)
-    snippets = await _maybe_add_references(db, question, snippets, titles)
+    snippets = await _maybe_add_references(db, question, snippets, titles, scope_ids)
     messages = build_messages(question, snippets, compare=compare)
     try:
         text = await llm.chat(messages)
@@ -636,6 +683,7 @@ async def answer_stream(
         return
 
     # 记录调用方显式指定的范围（判断是否对比模式只看这个）
+    scope_ids = set(paper_ids) if paper_ids else None
     requested_ids = list(paper_ids or [])
     # 问题点名了某篇论文时把它补进范围，避免锁定错论文导致答非所问
     paper_ids, _added = await expand_scope_by_title(db, question, paper_ids)
@@ -664,7 +712,7 @@ async def answer_stream(
 
     front = await _front_chunks(db, set(titles.keys()))
     snippets = merge_with_front_matter(retrieved.hits, titles, front)
-    snippets = await _maybe_add_references(db, question, snippets, titles)
+    snippets = await _maybe_add_references(db, question, snippets, titles, scope_ids)
     yield _snippet_event(snippets)
 
     messages = build_messages(question, snippets, compare=compare)
