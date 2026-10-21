@@ -1,14 +1,20 @@
-﻿"""问答接口的请求与响应模型。"""
+"""问答接口的请求与响应模型。"""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+
+from app.services.rag import DEFAULT_TOP_K
 
 
 class AskRequest(BaseModel):
     """提问请求。"""
 
     question: str = Field(..., min_length=1, max_length=500, description="问题")
-    top_k: int = Field(6, ge=1, le=20, description="检索并交给模型的片段数")
+    # 必须与服务层的 DEFAULT_TOP_K 保持一致：
+    # 这里原先是写死的 6，服务层改成 8 之后两处脱节，
+    # 导致「不传参数」的请求（也就是真实用户的默认路径）
+    # 反而用回过时的值，实测会拒答「编码器由哪些子层组成」这类问题。
+    top_k: int = Field(DEFAULT_TOP_K, ge=1, le=20, description="检索并交给模型的片段数")
     allow_vector: bool = Field(True, description="是否允许向量检索")
     paper_ids: list[str] = Field(
         default_factory=list,

@@ -246,7 +246,11 @@ def main() -> int:
         # ---------------- 9. 问答 ----------------
         c.section("9. RAG 问答")
         if status.get("embedding_available"):
-            r = client.post("/qa", json={"question": "编码器和解码器由哪些子层组成", "top_k": 6})
+            # 不传 top_k，使用服务端默认值（当前为 8）。
+            # 原先写死 6：库扩到 8 篇、1709 块之后，6 条片段已不足以命中
+            # 「编码器由哪些子层组成」所需的 3.1 节（实测 6 条拒答、8 条正确）。
+            # 验证脚本应与真实用户请求一致——用默认值，而不是写死一个过时的数字。
+            r = client.post("/qa", json={"question": "编码器和解码器由哪些子层组成"})
             c.check("问答 HTTP 200", r.status_code == 200, "实际 %s" % r.status_code)
             if r.status_code == 200:
                 ans = r.json()
