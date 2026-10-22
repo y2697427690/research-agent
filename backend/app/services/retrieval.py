@@ -267,6 +267,12 @@ async def retrieve(
         bm25_hits = _take_per_paper(
             bm25_hits, lambda h: h.chunk.paper_id, per_paper
         )
+    # 被「信息量不足」判掉的关键词结果先留着：它不该在它是唯一可用路径时被丢掉。
+    # 实测踩过：嵌入额度耗尽 → 向量路异常；同一查询的关键词路又被 IDF 过滤器跳过，
+    # 于是两条路都没有结果，检索返回 empty，问答直接拒答。
+    # 过滤器是「防噪声」的，前提是另有可用结果；否则宁可给出低置信度的召回。
+    bm25_fallback: list[str] = []
+
     if bm25_hits:
         # 判据用「前若干个命中的最强词 IDF」，而不是只看第一名。
         # 只看第一名的问题：排名第一的块可能恰好只匹配到 "layer" 这类高频词，
@@ -282,9 +288,11 @@ async def retrieve(
         if len(bm25) < MIN_CORPUS_FOR_IDF_FILTER:
             # 语料太小，统计量不可靠，直接保留关键词检索结果
             ratio = 1.0
+        bm25_ids = [h.chunk.chunk_id for h in bm25_hits]
         if ratio >= MIN_INFORMATIVE_IDF_RATIO:
-            rankings["bm25"] = [h.chunk.chunk_id for h in bm25_hits]
+            rankings["bm25"] = bm25_ids
         else:
+            bm25_fallback = bm25_ids
             degraded = (
                 f"关键词检索仅命中高频词（最高 IDF {top_idf:.2f}，"
                 f"相对区分度 {ratio:.0%}），已跳过该路"
@@ -314,6 +322,18 @@ async def retrieve(
             logger.warning("向量检索不可用，降级为纯 BM25: %s", degraded)
     elif allow_vector and not embedding.is_available():
         degraded = "未配置嵌入模型（APP_EMBEDDING_API_KEY 为空）"
+
+    if not rankings and bm25_fallback:
+        # 走到这里说明：向量路没有产出（异常或未配置），
+        # 而关键词结果又因「信息量不足」被跳过。
+        # 此时宁可给低置信度的召回，也不该返回空让问答直接拒答——
+        # 用户至少还能看到相关原文，并可据此判断检索质量。
+        rankings["bm25"] = bm25_fallback
+        degraded = (
+            (degraded + "；" if degraded else "")
+            + "向量检索不可用，已回退到关键词检索结果（置信度较低）"
+        )
+        logger.info("向量不可用，回退到 BM25: %d 条", len(bm25_fallback))
 
     if not rankings:
         return RetrievalResult(query=query, mode="empty", degraded_reason=degraded)
