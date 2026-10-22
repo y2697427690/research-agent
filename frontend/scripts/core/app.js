@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    app.js — 应用入口：视图注册、路由、外壳渲染
    ----------------------------------------------------------------------------
    渲染流程（单向数据流）：
@@ -196,8 +196,11 @@ window.App = window.App || {};
         break;
       case 'graph-open-paper': S.openPaper(data.id); break;
 
-      /* ---- 推荐 ---- */
+      /* ---- 论文发现（arXiv） ---- */
       case 'discover-tab': S.setDiscoverTab(data.tab); break;
+      case 'discover-search': S.discoverSearch(); break;
+      case 'discover-sort': S.setDiscoverSort(data.sort); break;
+      case 'discover-ingest': S.discoverIngest(data.id); break;
       case 'vote-up': S.vote(data.id, 'up'); break;
       case 'vote-down': S.vote(data.id, 'down'); break;
 

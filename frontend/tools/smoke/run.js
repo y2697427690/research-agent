@@ -799,52 +799,86 @@ t('图谱：点击节点会记录选中并在侧栏展示详情', () => {
   restore();
 });
 
-/* --- 7. 推荐 --- */
-t('推荐：每日/每周/兴趣三个标签页可切换并渲染', () => {
-  ['daily', 'weekly', 'interest'].forEach((tab) => {
-    restore();
-    App.store.actions.setDiscoverTab(tab);
-    renderView('discover');
-  });
-});
-t('推荐：每条卡片都有分数、理由与反馈按钮', () => {
-  restore();
-  App.store.actions.setDiscoverTab('daily');
-  renderView('discover');
-  if (countExact('.rec-card') < 4) throw new Error('推荐卡片过少：' + countExact('.rec-card'));
-  if (countExact('.rec-score') !== countExact('.rec-card')) throw new Error('分数数量与卡片不匹配');
-  mustText('推荐理由');
-  if (countExact('[data-action="vote-up"]') !== countExact('.rec-card')) throw new Error('点赞按钮数量不匹配');
-  if (countExact('[data-action="vote-down"]') !== countExact('.rec-card')) throw new Error('踩按钮数量不匹配');
-});
-t('推荐：踩过的条目会排到最后且被标记变暗', () => {
-  restore();
-  App.store.actions.setDiscoverTab('daily');
-  renderView('discover');
-  App.store.actions.vote('rec1', 'down');
-  renderView('discover');
-  const cards = el.querySelectorAll('.rec-card');
-  const titles = cards.map((c) => c.textContent.replace(/\s+/g, ' '));
-  const i1 = titles.findIndex((t) => t.indexOf('Native Sparse Attention') !== -1);
-  if (i1 === -1) throw new Error('找不到被踩的条目');
-  if (i1 !== cards.length - 1) throw new Error('被踩的条目没有被排到最后（位置 ' + i1 + '/' + cards.length + '）');
-  if (!el.querySelector('.rec-card.dim')) throw new Error('被踩的条目没有变暗');
-  restore();
-});
-t('推荐：每条推荐的理由与代码标记都有内容', () => {
-  App.data.recommendations.forEach((r) => {
-    if (!r.reason || r.reason.length < 20) throw new Error(r.id + ' 缺少推荐理由');
-    if (typeof r.hasCode !== 'boolean') throw new Error(r.id + ' 缺少代码标记');
-    if (r.hasCode && !r.codeUrl) throw new Error(r.id + ' 有代码但没有链接');
-  });
-});
-t('推荐：自动下载区三个入口都在', () => {
+/* --- 7. 论文发现（arXiv 检索） --- */
+t('发现：搜索框、两种排序与结果区都在', () => {
   restore();
   renderView('discover');
-  mustFind('#paper-name');
-  mustFind('#name-go');
-  mustFind('#refs-crawl');
-  mustFind('#fetch-now');
+  mustFind('#dq', '关键词输入框');
+  mustFind('[data-action="discover-search"]', '检索按钮');
+  mustFindAll('[data-action="discover-sort"]', 2, '排序按钮');
+  mustText('检索 arXiv');
+  mustText('相关度');
+  mustText('最新发布');
+  // 未检索时应给出引导文案，而不是空白
+  mustFind('.disc-state', '空状态提示');
+});
+
+t('发现：已不再依赖演示数据（recommendations）', () => {
+  restore();
+  const html = renderView('discover');
+  // 旧版整页来自 App.data.recommendations；现在应完全无关
+  if (html.indexOf('推荐理由') !== -1) throw new Error('页面里仍有旧版「推荐理由」文案');
+  if (countExact('.rec-card') !== 0) throw new Error('旧版推荐卡片 .rec-card 仍在渲染');
+  if (countExact('.rec-score') !== 0) throw new Error('旧版分数 .rec-score 仍在渲染');
+  if (html.indexOf('主题分布') !== -1) throw new Error('页面里仍有虚构的「主题分布」');
+});
+
+t('发现：检索结果卡片渲染标题、作者、arXiv 编号与操作按钮', () => {
+  restore();
+  // 直接注入一份结果，验证渲染路径（不依赖网络）
+  App.store.state.discover.query = 'layer normalization';
+  App.store.state.discover.total = 2;
+  App.store.state.discover.effectiveQuery = 'all:"layer normalization"';
+  App.store.state.discover.items = [
+    {
+      arxivId: '1607.06450', version: 'v1', title: 'Layer Normalization',
+      authors: ['Jimmy Lei Ba', 'Jamie Ryan Kiros', 'Geoffrey E Hinton'],
+      summary: 'This paper introduces layer normalization, a technique to stabilize training.',
+      published: '2016-07-21', primaryCategory: 'stat.ML',
+      comment: null, pdfUrl: 'https://arxiv.org/pdf/1607.06450',
+      absUrl: 'https://arxiv.org/abs/1607.06450', inLibrary: true,
+    },
+    {
+      arxivId: '2510.09904', version: 'v2', title: 'Stability of Transformers under Layer Normalization',
+      authors: ['Kelvin Kan'], summary: 'A study on stability.',
+      published: '2025-10-10', primaryCategory: 'cs.LG',
+      comment: 'Accepted at NeurIPS 2025',
+      pdfUrl: 'https://arxiv.org/pdf/2510.09904',
+      absUrl: 'https://arxiv.org/abs/2510.09904', inLibrary: false,
+    },
+  ];
+  renderView('discover');
+
+  mustFindAll('.disc-item', 2, '结果卡片');
+  mustText('Layer Normalization');
+  mustText('arXiv:1607.06450v1');
+  mustText('Jimmy Lei Ba');
+  mustText('stat.ML');
+  // 已在库的条目显示徽标、不给入库按钮；未入库的给按钮
+  mustText('已在库');
+  if (countExact('[data-action="discover-ingest"]') !== 1) {
+    throw new Error('入库按钮数量应为 1（只有未入库的那条）');
+  }
+  mustFind('[data-action="discover-ingest"]');
+  // 实际查询语句：对「渲染函数的原始输出」断言，而不是 el.innerHTML。
+  // 原因：本文件里的极简 DOM 在 innerHTML getter 中会把文本节点重新序列化并
+  // 再转义一次（&quot; → &amp;quot;），个别纯文本节点会在往返中丢失，
+  // 那是测试垫片的局限，与「页面是否渲染出这段文字」无关。
+  const rawCard = String(App.views.discover.searchCard(App.store.state.discover));
+  if (rawCard.indexOf('实际查询') === -1) {
+    throw new Error('搜索区没有展示实际查询语句');
+  }
+  if (rawCard.indexOf('多词查询会自动加上引号') === -1) {
+    throw new Error('缺少「多词查询按短语匹配」的说明');
+  }
+});
+
+t('发现：底部如实说明尚未实现的能力', () => {
+  restore();
+  renderView('discover');
+  mustFind('.disc-foot');
+  mustText('尚未实现');
+  mustText('引用含金量');
 });
 
 /* --- 8. 写作助手算法 --- */

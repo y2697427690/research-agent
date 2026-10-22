@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    api.js — 与后端通信的唯一出口
    ----------------------------------------------------------------------------
    为什么单独抽一层：
@@ -191,6 +191,24 @@ window.App = window.App || {};
         limit ? { limit: limit } : {});
     },
     indexStatus() { return get('/search/index'); },
+
+    /* ---- 论文发现（arXiv） ---- */
+    /**
+     * 检索 arXiv。
+     * 关键词必须 encodeURIComponent：用户可能输入中文、空格、冒号（arXiv 语法），
+     * 直接拼进 URL 会破坏查询串。
+     */
+    searchArxiv(q, maxResults, sort) {
+      return get(
+        '/discover/search?q=' + encodeURIComponent(q) +
+        '&max_results=' + (maxResults || 10) +
+        '&sort=' + (sort || 'relevance')
+      );
+    },
+    /** 把某篇 arXiv 论文下载入库（返回 accepted / duplicate） */
+    ingestArxiv(arxivId, force) {
+      return postJson('/discover/ingest', { arxiv_id: arxivId, force: !!force });
+    },
 
     /* ---- 引用图谱 ---- */
     graph() { return get('/graph'); },

@@ -67,8 +67,21 @@ window.App = window.App || {};
     // 真实引用图：由 loadGraph 从后端填充；为空时图谱页回退到演示数据
     graphData: null,
 
-    // ---- 推荐 ----
-    discover: { tab: 'daily', filter: 'all', feedback: {} },  // feedback: {id: 'up'|'down'}
+    // ---- 论文发现（arXiv 检索）----
+    discover: {
+      tab: 'daily',          // 兼容旧字段，新界面不再使用
+      filter: 'all',
+      feedback: {},
+      query: '',             // 用户输入的关键词
+      sort: 'relevance',     // relevance | recent
+      loading: false,
+      error: null,
+      total: 0,
+      hint: null,            // 后端给的提示（零结果时建议换词或使用 arXiv 语法）
+      effectiveQuery: '',    // 实际发给 arXiv 的语句，让用户理解「为什么搜到这些」
+      items: [],
+      ingesting: {},         // arxivId -> true，表示该条正在下载入库
+    },
 
     // ---- 写作助手 ----
     writing: { tab: 'outline', idea: '', outline: null, running: false, csvData: null },
@@ -746,7 +759,104 @@ window.App = window.App || {};
     setGraphLayout(layout) { state.graph.layout = layout; notify('graph'); },
     toggleCoreHighlight() { state.graph.highlightCore = !state.graph.highlightCore; notify('graph'); },
 
-    /* ===== 推荐 ===== */
+    /* ===== 论文发现（arXiv） ===== */
+
+    /**
+     * 检索 arXiv。
+     *
+     * 为什么把 loading / error 都放进状态而不是只在视图里临时存：
+     * 检索要 1~3 秒（arXiv 有速率限制），期间视图会被重绘，
+     * 局部变量会丢；放在状态里才能稳定显示「正在检索…」。
+     */
+    async discoverSearch(query) {
+      if (!hasApi()) return null;
+      const q = String(query != null ? query : state.discover.query || '').trim();
+      if (!q) {
+        App.ui.toast('请输入关键词，例如 layer normalization', 'warn');
+        return null;
+      }
+      state.discover.query = q;
+      state.discover.loading = true;
+      state.discover.error = null;
+      notify('discover');
+      try {
+        const data = await App.api.searchArxiv(q, 10, state.discover.sort);
+        state.discover.items = data.items || [];
+        state.discover.total = data.total || 0;
+        state.discover.hint = data.hint || null;
+        state.discover.effectiveQuery = data.effective_query || '';
+        return state.discover.items;
+      } catch (err) {
+        state.discover.items = [];
+        state.discover.total = 0;
+        state.discover.error = err.message || '检索失败';
+        App.ui.toast('arXiv 检索失败：' + state.discover.error, 'error');
+        return null;
+      } finally {
+        state.discover.loading = false;
+        notify('discover');
+      }
+    },
+
+    /**
+     * 把一条检索结果下载入库，随后自动触发解析。
+     *
+     * 分成两步（入库 → 解析）而不是一步做完：
+     * 入库只要 1~3 秒（下载 PDF），解析要几秒到几十秒（大论文更久）。
+     * 先让用户看到「已入库」，再单独显示解析进度，比一直转圈体验好。
+     */
+    async discoverIngest(arxivId, force) {
+      if (!hasApi() || !arxivId) return null;
+      state.discover.ingesting[arxivId] = true;
+      notify('discover');
+      try {
+        const res = await App.api.ingestArxiv(arxivId, force);
+
+        if (!res.accepted) {
+          // 检出重复：如实告诉用户与哪篇重复，并提示可强制入库
+          App.ui.toast(
+            (res.duplicate && res.duplicate.message) || res.message || '已存在相同论文',
+            'warn', 4200
+          );
+          return res;
+        }
+
+        const paperId = res.paper && res.paper.id;
+        App.ui.toast('已入库，正在解析…', 'ok');
+        // 入库成功后刷新文库列表，界面立刻能看到新论文
+        await actions.loadPapers();
+
+        if (paperId) {
+          try {
+            await App.api.parsePaper(paperId);
+          } catch (err) {
+            App.ui.toast('解析失败：' + err.message, 'error');
+          }
+          await actions.loadPapers();
+          // 标记该条已在库，避免用户重复点击
+          state.discover.items = state.discover.items.map((it) =>
+            it.arxivId === arxivId ? Object.assign({}, it, { inLibrary: true }) : it
+          );
+          App.ui.toast('《' + ((res.paper && res.paper.title) || arxivId) + '》已入库并解析', 'ok', 3200);
+        }
+        return res;
+      } catch (err) {
+        App.ui.toast('入库失败：' + (err.message || '未知错误'), 'error');
+        return null;
+      } finally {
+        delete state.discover.ingesting[arxivId];
+        notify('discover');
+      }
+    },
+
+    setDiscoverSort(sort) {
+      state.discover.sort = sort === 'recent' ? 'recent' : 'relevance';
+      notify('discover');
+      // 已经搜过一次的话，换排序后立即重搜，省得用户再点一次
+      if (state.discover.query) actions.discoverSearch(state.discover.query);
+    },
+
+    /* ===== 推荐（旧演示数据接口，保留以免其它模块调用报错） ===== */
     setDiscoverTab(tab) { state.discover.tab = tab; notify('discover'); },
     vote(id, v) {
       state.discover.feedback[id] = state.discover.feedback[id] === v ? null : v;

@@ -335,6 +335,35 @@ def main() -> int:
         except httpx.HTTPError as exc:
             c.check("前端页面请求", False, str(exc)[:120])
 
+        # ------------------------------------------------------------------
+        # 12. arXiv 检索（论文发现）
+        #
+        # 单独检查的意义：服务器在国内，能否访问 arxiv.org 与本地环境未必一致。
+        # 这一项挂了说明发现页在线上不可用，而不是代码问题。
+        # 注意 arXiv 有速率限制（约 3 秒一次），这里只发一次请求。
+        # ------------------------------------------------------------------
+        c.section("12. arXiv 检索（论文发现）")
+        try:
+            r = client.get("/discover/search",
+                           params={"q": "layer normalization", "max_results": 3})
+            c.check("arXiv 检索 HTTP 200", r.status_code == 200,
+                    "实际 %s" % r.status_code)
+            if r.status_code == 200:
+                data = r.json()
+                c.check("检索到结果", (data.get("total") or 0) > 0,
+                        "total=%s" % data.get("total"))
+                c.check("结果字段完整",
+                        bool(data["items"]) and all(
+                            it.get("title") and it.get("arxiv_id")
+                            for it in data["items"]
+                        ),
+                        "首条: %s" % (data["items"][0]["title"][:40]
+                                     if data.get("items") else "无"))
+                print("       实际查询: %s"
+                      % data.get("effective_query", "")[:60])
+        except httpx.HTTPError as exc:
+            c.check("arXiv 检索请求", False, str(exc)[:120])
+
     return c.summary()
 
 
