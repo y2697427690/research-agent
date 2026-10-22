@@ -1,4 +1,4 @@
-﻿"""FastAPI 应用入口
+"""FastAPI 应用入口
 
 启动方式（在backend目录，虚拟环境已激活）
      uvicorn app.api.main:app --reload  --port 8000
@@ -67,6 +67,22 @@ def create_app() ->FastAPI:
     )
 
     register_exception_handlers(app)
+
+    # ---- 前端静态文件的缓存策略 ----
+    # StaticFiles 默认只发 ETag/Last-Modified，不发 Cache-Control。
+    # 这种响应会被浏览器「启发式缓存」：按文件年龄的 10% 估算新鲜度，
+    # 期间直接复用本地副本，连一次条件请求都不发。
+    # 后果是部署完新版本后，用户页面里仍是旧 JS——本项目就踩过：
+    # 发现页已重写并同步，浏览器却还在渲染旧版（旧标签页 + 启发式缓存）。
+    # 这里统一要求「每次使用前回服务器确认」，代价是每次多几个 304 响应，
+    # 对演示规模的静态文件完全可以接受。
+    @app.middleware("http")
+    async def no_stale_frontend(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith((".html", ".js", ".css", ".svg", ".ico")):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
     # 自托管文档页所需的前端资源，避免依赖 CDN
     app.mount(
