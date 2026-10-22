@@ -238,17 +238,23 @@ window.App = window.App || {};
      *   3. 稍后可 POST /papers/{id}/embed 生成向量（问答才需要）
      */
     addUploads(files) {
-      const items = Array.prototype.map.call(files, (f) => ({
-        id: U.uid('up'),
-        name: f.name,
-        size: f.size,
-        status: 'queued',   // queued → parsing → done | duplicate | error
-        progress: 0,
-        pages: null,
-        chars: null,
-        dupOf: null,
-        file: f,            // 保留原始 File 对象用于上传
-      }));
+      const items = Array.prototype.map.call(files, (f) => {
+        // 从文件名里解析版本号（v7 → 7）。arXiv 的版本就在文件名里，
+        // 这是上传瞬间唯一能确定的版本信息（此时还没解析内容）。
+        const ver = String(f.name || '').match(/v(\d+)(?=\.pdf$|$)/i);
+        return {
+          id: U.uid('up'),
+          name: f.name,
+          size: f.size,
+          version: ver ? ver[1] : null,
+          status: 'queued',   // queued → parsing → done | duplicate | error
+          progress: 0,
+          pages: null,
+          chars: null,
+          dupOf: null,
+          file: f,            // 保留原始 File 对象用于上传
+        };
+      });
       state.uploads = state.uploads.concat(items);
       notify('uploads');
       items.forEach((it) => actions._runPipeline(it.id));

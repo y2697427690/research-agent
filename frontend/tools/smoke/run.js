@@ -582,10 +582,24 @@ t('去重：把 v1 上传到「只有 v7」的文库，会识别为同论文不�
   if (!dup) throw new Error('未识别出重复论文');
   if (dup.kind !== 'version') throw new Error('未判定为同论文不同版本，实际：' + dup.kind);
   if (dup.paper.id !== 'p-attention-v7') throw new Error('应命中文库中的 v7，实际命中 ' + dup.paper.id);
-  const diff = App.dedupe.diffVersions(dup.paper, '1706.03762v1.pdf');
-  if (!diff.length) throw new Error('未生成差异条目');
-  if (diff[0].type !== 'warn') throw new Error('首条差异不是「提醒」，而是 ' + diff[0].type);
-  if (diff[0].text.indexOf('保留文库版本') === -1) throw new Error('未给出保留建议');
+  // 差异对比已改为「只展示真实可比字段」（版本号、大小、页数、解析状态），
+  // 不再编造「新增某附录」这类条目；这里改断言对照表能反映真实的版本方向。
+  const rows = App.views.library.compareRows(dup.paper, {
+    name: '1706.03762v1.pdf', size: 100, version: '1',
+  });
+  const verRow = rows.find((r) => r.label === '版本号');
+  if (!verRow) throw new Error('缺少版本号对照行');
+  if (verRow.before !== 'v7' || verRow.after !== 'v1') {
+    throw new Error('版本号对照错误：' + verRow.before + ' → ' + verRow.after);
+  }
+  const concl = rows.find((r) => r.label === '结论');
+  if (!concl) throw new Error('缺少版本新旧结论');
+  if (concl.after.indexOf('文库版本更新') === -1) {
+    throw new Error('v7 在库、上传 v1 时应判定文库版本更新，实际：' + concl.after);
+  }
+  // 旧版会在版本号缺失时渲染出「vNaN」「NaN%」，这里守住这条线
+  const text = JSON.stringify(rows);
+  if (text.indexOf('NaN') !== -1) throw new Error('对照表里出现 NaN：' + text);
 });
 t('去重：上传与文库完全相同的文件，识别为 identical', () => {
   restore();

@@ -927,3 +927,26 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
   border-top: 1px solid var(--line);
   line-height: 1.75;
 }
+
+/* ---- 重复论文弹窗：真实字段对照 ---- */
+.cmp-table {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.cmp-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 20px 1fr;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 9px 12px;
+  font-size: var(--fs-sm);
+}
+.cmp-row + .cmp-row { border-top: 1px solid var(--line); }
+.cmp-row:nth-child(odd) { background: var(--bg-2); }
+.cmp-label { color: var(--text-2); font-size: var(--fs-xs); }
+.cmp-before { color: var(--text-1); }
+.cmp-arrow { color: var(--text-3); text-align: center; }
+.cmp-after { color: var(--text-0); font-weight: 600; }
+
+/* 差异条目样式在弹窗改版后仍被其它地方复用（如解析详情），保留 */

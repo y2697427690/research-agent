@@ -22,7 +22,7 @@ window.App = window.App || {};
         { req: '更高级解析（识别结构、公式、表格、图表）', ui: '解析详情抽屉的 7 个分区（标题/作者/摘要/章节/表格/公式/参考文献/附录）', code: 'library.js → drawerHtml()' },
         { req: '1.1.1 内容去重（文件不同但内容相同）', ui: '上传后弹出「检测到重复论文」弹窗', code: 'core/dedupe.js → findDuplicate()' },
         { req: '提示选择保留哪个版本 / 默认保留新版', ui: '弹窗底部三个按钮：用新文件覆盖 / 保留文库版本（推荐）/ 两份都保留', code: 'store.js → resolveOverwrite / resolveKeep / resolveKeepBoth' },
-        { req: '版本差异对比（v1 vs v7）', ui: '弹窗中的「版本差异对比」列表（新增 / 删除 / 修改 / 一致 / 提醒）', code: 'core/dedupe.js → diffVersions()' },
+        { req: '版本差异对比（v1 vs v7）', ui: '弹窗中的「真实可比信息」表：版本号、文件大小、页数、解析状态；逐段 diff 未实现并已在弹窗内注明', code: 'views/library.js → compareRows()' },
         { req: '1.1.2 解析粒度：标题、作者、摘要、一~三级标题', ui: '解析详情抽屉 + 阅读器左侧树状目录', code: 'mock-data.js → readerDoc.toc' },
         { req: '表格 / 图表 / 公式 / 参考文献 / 附录', ui: '阅读器正文中的表格块、图形块、公式块、References 列表、Appendix 章节', code: 'reader.js → blockHtml()' },
         { req: '扫描件 PDF 解析（1706.03762v1_img.pdf）', ui: '文库列表中带「扫描件」徽章的行 + 解析详情中的 OCR 标记', code: 'mock-data.js → p-attention-img；library.js → 质量徽章' },

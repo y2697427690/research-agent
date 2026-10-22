@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views/library.js — 文库（论文管理）
    ----------------------------------------------------------------------------
    对应需求 1.1「PDF 文件管理和解析」：
@@ -194,24 +194,109 @@ window.App = window.App || {};
   /* ==========================================================================
      4. 去重处理弹窗（需求核心场景）
      ========================================================================== */
+  /**
+   * 取版本号的数字部分。
+   * 数据来源不一致：后端返回 "7"（纯数字），演示数据里是 "v7"（带前缀），
+   * 上传项从文件名解析出的也是 "7"。统一在这里归一，避免出现 "vv7" 或 NaN。
+   */
+  function verNum(v) {
+    const m = String(v == null ? '' : v).match(/(\d+)/);
+    return m ? Number(m[1]) : NaN;
+  }
+
+  /** 版本号的展示形式：能解析就显示 vN，否则显示「未标注」 */
+  function verLabel(v) {
+    const n = verNum(v);
+    return Number.isFinite(n) ? 'v' + n : '未标注';
+  }
+
+  /**
+   * 比较「文库已有」与「本次上传」的真实字段。
+   *
+   * 为什么只做这几个字段：
+   * 上传瞬间新文件还没解析（页数、章节、参考文献都未知），
+   * 真正能确定的只有文件名里的版本号、文件大小这些元信息。
+   * 旧版这里展示了「新增 Attention Visualizations 附录」「参考文献由 34 增至 40 条」
+   * 一类具体到条目的差异——那些全是写死的演示文本，
+   * 版本号缺失时还会渲染成「vNaN」，属于界面在编造数据。
+   * 逐段 diff 需要两份都解析后做文本对齐，已列入后续工作。
+   */
+  function compareRows(paper, up) {
+    const oldNum = verNum(paper.version);
+    const newNum = verNum(up.version);
+    const known = Number.isFinite(oldNum) && Number.isFinite(newNum);
+
+    const rows = [
+      { label: '版本号', before: verLabel(paper.version), after: verLabel(up.version) },
+      { label: '文件大小', before: U.bytes(paper.sizeBytes), after: U.bytes(up.size) },
+      { label: '页数', before: paper.pages ? paper.pages + ' 页' : '未知', after: '解析后可知' },
+      { label: '解析状态', before: statusText(paper.status), after: '尚未解析' },
+    ];
+
+    // 只有两边都能解析出版本号时，才判断谁更新——否则不臆测
+    if (known) {
+      const diff = newNum - oldNum;
+      rows.push({
+        label: '结论',
+        before: '',
+        after: diff > 0 ? '本次上传更新 ' + diff + ' 个版本'
+          : diff < 0 ? '文库版本更新 ' + (-diff) + ' 个版本'
+            : '版本号相同',
+      });
+    }
+    return rows;
+  }
+
+  function statusText(status) {
+    const map = {
+      done: '已解析', need_review: '需校对', failed: '解析失败',
+      parsing: '解析中', queued: '待解析',
+    };
+    return map[status] || '未知';
+  }
+
   function showDiff(uploadId) {
     const up = App.store.state.uploads.find((u) => u.id === uploadId);
     if (!up || !up.dupInfo) return;
     const info = up.dupInfo;
     const paper = info.paper;
-    const diff = App.dedupe.diffVersions(paper, up.name);
-    const inLibNewer = App.dedupe.versionNum(paper.version) >
-      App.dedupe.versionNum((up.name.match(/v(\d+)/) || [, 0])[1]);
+
+    // 谁更新：只在两边都有版本号时判断，避免把 undefined 参与比较得出 NaN
+    const oldVer = Number(paper.version);
+    const newVer = Number(up.version);
+    const known = Number.isFinite(oldVer) && Number.isFinite(newVer);
+    const libNewer = known && oldVer > newVer;
+    const sameVersion = known && oldVer === newVer;
+
+    const kindText = info.kind === 'identical' ? '内容完全相同'
+      : info.kind === 'newer_version' ? '同一论文的更新版本'
+        : info.kind === 'older_version' ? '同一论文的较旧版本'
+          : '疑似重复';
+
+    // 相似度只有离线判定（前端 findDuplicate）才提供；
+    // 走后端时不返回该字段，因此必须先判断类型再格式化，
+    // 否则 U.pct(undefined) 会显示出「NaN%」。
+    const hasSimilarity = typeof info.similarity === 'number' && Number.isFinite(info.similarity);
+
+    const rows = compareRows(paper, up);
 
     const body = h`
-      <div class="notice ${inLibNewer ? 'warn' : 'info'} mb-16">
-        <span>${inLibNewer ? '⚠' : 'ℹ'}</span>
-        <div>
-          <div style="font-weight:600">${info.reason}</div>
-          <div class="muted tiny mt-8">
-            内容相似度：<b>${U.pct(info.similarity, 1)}</b>
-            · 判定类型：${info.kind === 'identical' ? '完全相同（重复文件）' : '同一论文的不同版本'}
-            ${inLibNewer ? ' · <b>文库版本更新</b>，建议保留文库版本' : ''}
+      <div class="notice ${libNewer ? 'warn' : 'info'} mb-16">
+        <span>${libNewer ? '⚠' : 'ℹ'}</span>
+        <div class="grow">
+          <div style="font-weight:600">${info.reason || info.message || '检测到重复'}</div>
+          <div class="row gap-8 wrap mt-8">
+            <span class="badge badge-outline">${kindText}</span>
+            ${hasSimilarity
+              ? U.raw(h`<span class="badge badge-outline">相似度 ${U.pct(info.similarity, 1)}</span>`)
+              : ''}
+            ${libNewer
+              ? U.raw(h`<span class="badge badge-warn">文库版本更新</span>`)
+              : sameVersion
+                ? U.raw(h`<span class="badge badge-outline">版本号相同</span>`)
+                : known
+                  ? U.raw(h`<span class="badge badge-ok">本次上传更新</span>`)
+                  : ''}
           </div>
         </div>
       </div>
@@ -221,32 +306,53 @@ window.App = window.App || {};
           <div class="muted tiny mb-8">文库中已有</div>
           <div style="font-weight:600">${paper.title}</div>
           <div class="muted small mt-8 mono">${paper.file}</div>
-          <div class="muted small">v${paper.version} · ${paper.pages} 页 · ${U.bytes(paper.sizeBytes)} · 加入于 ${U.ago(paper.addedAt)}</div>
+          <div class="muted small mt-8">
+            ${paper.version ? 'v' + paper.version + ' · ' : ''}${paper.pages || '?'} 页
+            · ${U.bytes(paper.sizeBytes)} · 加入于 ${U.ago(paper.addedAt)}
+          </div>
         </div></div>
         <div class="card"><div class="card-body">
           <div class="muted tiny mb-8">本次上传</div>
-          <div style="font-weight:600">${up.name.replace(/\.pdf$/, '')}</div>
+          <div style="font-weight:600">${String(up.name).replace(/\.pdf$/i, '')}</div>
           <div class="muted small mt-8 mono">${up.name}</div>
-          <div class="muted small">${up.pages || '?'} 页 · ${U.bytes(up.size)} · 刚刚</div>
+          <div class="muted small mt-8">
+            ${up.version ? 'v' + up.version + ' · ' : ''}尚未解析
+            · ${U.bytes(up.size)}
+          </div>
         </div></div>
       </div>
 
-      ${App.ui.sectionTitle('版本差异对比')}
-      <div class="diff-list">
-        ${U.raw(diff.map((d) => h`
-          <div class="diff-item diff-${d.type}">
-            <span class="diff-tag">${
-              d.type === 'add' ? '新增' : d.type === 'del' ? '删除'
-              : d.type === 'mod' ? '修改' : d.type === 'warn' ? '提醒' : '一致'}</span>
-            <span>${d.text}</span>
+      ${App.ui.sectionTitle('真实可比信息', '<span class="muted tiny">上传瞬间新文件尚未解析，因此只比较元信息</span>')}
+      <div class="cmp-table">
+        ${U.raw(rows.map((r) => h`
+          <div class="cmp-row">
+            <span class="cmp-label">${r.label}</span>
+            <span class="cmp-before">${r.before || ''}</span>
+            <span class="cmp-arrow">→</span>
+            <span class="cmp-after">${r.after || ''}</span>
           </div>`).join(''))}
       </div>
 
-      <div class="muted tiny mt-16">
-        差异基于「规范化文本 + 章节对齐 + 表格结构」三路比对生成；真实实现会给出逐段 diff 与高亮视图。
+      ${info.reasons && info.reasons.length
+        ? U.raw(h`
+          <div class="mt-16">
+            <div class="muted tiny mb-8">判定依据</div>
+            ${U.raw(info.reasons.map((r) => h`<div class="muted small">· ${r}</div>`).join(''))}
+          </div>`)
+        : ''}
+
+      <div class="notice info mt-16">
+        <span>ℹ</span>
+        <div class="muted small">
+          逐段版本差异（哪一节改了什么、参考文献增删了哪些）尚未实现：
+          它需要两份 PDF 都完成解析后做文本对齐，已列入后续工作。
+          这里只展示确定无误的元信息，不做推测。
+        </div>
       </div>
     `;
 
+    // 主按钮跟着「谁更新」走：文库更新时推荐保留文库，本次更新时推荐覆盖
+    const primaryIsOverwrite = known && !libNewer && !sameVersion;
     const ui = App.ui.openModal(h`
       <div class="modal wide">
         <div class="modal-head">
@@ -260,8 +366,12 @@ window.App = window.App || {};
           <div class="spacer"></div>
           <button class="btn btn-ghost" data-close>稍后处理</button>
           <button class="btn btn-ghost" data-keep-both>两份都保留</button>
-          <button class="btn btn-ghost" data-keep>保留文库版本（推荐）</button>
-          <button class="btn btn-primary" data-overwrite>用新文件覆盖</button>
+          <button class="btn ${primaryIsOverwrite ? 'btn-ghost' : 'btn-primary'}" data-keep>
+            保留文库版本${primaryIsOverwrite ? '' : '（推荐）'}
+          </button>
+          <button class="btn ${primaryIsOverwrite ? 'btn-primary' : 'btn-ghost'}" data-overwrite>
+            用新文件覆盖${primaryIsOverwrite ? '（推荐）' : ''}
+          </button>
         </div>
       </div>`);
 
@@ -480,6 +590,8 @@ window.App = window.App || {};
   App.views.library = {
     render, pickFiles, showDiff, confirmDelete,
     drawerHtml, metaDrawerHtml, setFilter,
+    // 导出给冒烟测试：验证重复弹窗里的字段对照（真实数据，不含编造条目）
+    compareRows,
   };
 
   /* 抽屉保存按钮与筛选框（因为抽屉是后插入 DOM 的，这里挂在 document 上统一处理） */

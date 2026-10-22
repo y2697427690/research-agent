@@ -87,60 +87,39 @@ window.App = window.App || {};
   }
 
   /**
-   * 生成两个版本的差异摘要（演示用：内容依据两版论文的真实改动方向撰写）。
-   * @returns {Array<{type, text}>}
-   */
-  function diffVersions(oldPaper, newFileName) {
-    const newVerNum = versionNum((String(newFileName).match(/v(\d+)/) || [, ''])[1]);
-    const oldVerNum = versionNum(oldPaper.version);
-    // 文库中的版本是否比本次上传的更新？（需求明确要求的场景）
-    const libIsNewer = !isNaN(oldVerNum) && !isNaN(newVerNum) && oldVerNum > newVerNum;
-
-    const older = libIsNewer ? String(newVerNum) : String(oldVerNum);
-    const newer = libIsNewer ? String(oldVerNum) : String(newVerNum);
-    const oldPages = oldPaper.pages || '?';
-    const newPages = 11;
-
-    // 通用的「arXiv 版本迭代」典型差异（演示数据，接后端后可换成真实逐段 diff）
-    const items = [
-      { type: 'same', text: '标题、作者列表、作者顺序均未变化（8 位作者，单位标注一致）。' },
-      { type: 'same', text: '核心方法（缩放点积注意力、多头注意力、位置编码）与主实验结论一致。' },
-      { type: 'add', text: 'v' + newer + ' 新增「Attention Visualizations」附录，补充了编码器各层注意力的可视化图（图 3、图 4）。' },
-      { type: 'add', text: 'v' + newer + ' 在 6.1 节补充了与同期工作的对比说明，并新增若干参考文献（参考文献数量由 34 条增至 40 条）。' },
-      { type: 'mod', text: 'v' + newer + ' 修正了训练细节表述：明确了 warmup_steps = 4000 与 β2 = 0.98 的取值说明。' },
-      { type: 'mod', text: 'v' + newer + ' 调整了部分表格数值的呈现方式（如训练成本列的记法统一为科学计数法）。' },
-      { type: 'del', text: 'v' + newer + ' 删除了 v' + older + ' 中关于某个早期基线的冗长描述。' },
-      { type: 'same', text: '页数变化：v' + older + ' 共 ' + (libIsNewer ? newPages : oldPages) +
-        ' 页，v' + newer + ' 共 ' + (libIsNewer ? oldPages : newPages) + ' 页。' },
-    ];
-
-    if (libIsNewer) {
-      items.unshift({
-        type: 'warn',
-        text: '⚠️ 文库中的版本（v' + oldPaper.version + '）比本次上传的版本（v' + newVerNum + '）更新，' +
-          '建议保留文库版本（点击「保留文库版本」）；如需保留本次上传，请确认你确实要回退版本。',
-      });
-    }
-    return items;
-  }
-
-  /**
-   * 计算两个文本块的相似度（Jaccard，基于 3-gram）。
-   * 真实实现中用于「文件不同但内容基本相同」的判定。
+   * 两段文本的相似度（0~1）：基于字符级 3-gram 的 Dice 系数。
+   *
+   * 为什么用 3-gram 而不是逐字比较：
+   * 逐字比较对「语序调换」「插入少量词」过于敏感，而 3-gram 集合能容忍
+   * 局部改动——正是判断「同一论文的两个版本」需要的特性。
+   * 只在「离线判定」（没有后端接口时）用到；走接口时由后端给出更可靠的结论。
    */
   function similarity(a, b) {
-    const gram = (s) => {
-      const t = String(s).toLowerCase().replace(/\s+/g, ' ');
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const x = norm(a);
+    const y = norm(b);
+    if (!x || !y) return 0;
+    const grams = (s) => {
       const set = new Set();
-      for (let i = 0; i < t.length - 2; i++) set.add(t.slice(i, i + 3));
+      for (let i = 0; i + 3 <= s.length; i += 1) set.add(s.slice(i, i + 3));
       return set;
     };
-    const A = gram(a), B = gram(b);
-    if (!A.size && !B.size) return 1;
-    let inter = 0;
-    A.forEach((g) => { if (B.has(g)) inter++; });
-    return inter / (A.size + B.size - inter || 1);
+    const gx = grams(x);
+    const gy = grams(y);
+    if (!gx.size || !gy.size) return 0;
+    let hit = 0;
+    gx.forEach((g) => { if (gy.has(g)) hit += 1; });
+    return (2 * hit) / (gx.size + gy.size);
   }
 
-  App.dedupe = { findDuplicate, diffVersions, similarity, versionNum, baseKey };
+  /* 关于「版本差异对比」
+     ------------------------------------------------------------------
+     这里原有一个 diffVersions()，返回写死的演示文本
+     （例如「新增 Attention Visualizations 附录」「参考文献由 34 条增至 40 条」），
+     并在版本号缺失时拼出「vNaN」。它已被移除：
+     界面现在只展示上传瞬间能确定的元信息（版本号、文件大小、页数、解析状态），
+     逐段 diff 需要两份 PDF 都解析后做文本对齐，属于后续工作。
+     保留这段说明，避免以后有人又把它「补回来」当演示数据。 */
+
+  App.dedupe = { findDuplicate, similarity, versionNum, baseKey };
 })(window.App);
