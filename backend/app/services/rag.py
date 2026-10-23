@@ -668,6 +668,34 @@ async def answer(
             refused=False,
         )
 
+    # ---- 拒答后重试一次 ----
+    # 现象：检索明明拿到了相关片段，模型仍回「资料中没有相关内容」。
+    # 典型是「论文只给了整体配置、没按子模型分列」这类问题——
+    # 同一份资料，上下文稍有变化就时答时拒，属于模型的保守倾向而非信息缺失。
+    # 处理：只在「第一次什么都没引用就拒答」时追加一次强制作答提示重试，
+    # 有引用就完全不触发，因此正常问题的开销为零。
+    # 代价：真正无关的问题（检索到片段但确实答不了）会多花一次调用，
+    # 约多 1~2 秒；这类请求在正常使用中很少，可以接受。
+    first_valid, _ = split_marks(text, len(snippets))
+    if not first_valid and snippets and not compare:
+        logger.info("首次回答无引用，追加强制作答提示重试: %r", question[:40])
+        retry_prompt = SYSTEM_PROMPT + (
+            "\n11. 上面这些资料与问题相关。只要资料中出现任何相关数字或表述"
+            "（哪怕是整体配置、间接描述或表格内容），就必须据此作答，"
+            "并在末尾说明其限定条件；只有资料与问题完全无关时才拒答。"
+        )
+        retry_messages = [
+            {"role": "system", "content": retry_prompt},
+            {"role": "user", "content": messages[-1]["content"]},
+        ]
+        try:
+            retried = await llm.chat(retry_messages)
+            retry_valid, _ = split_marks(retried, len(snippets))
+            if retry_valid:
+                text = retried
+        except Exception:  # noqa: BLE001 - 重试失败就用第一次的结果
+            logger.warning("拒答重试失败，沿用首次回答")
+
     valid, invalid = split_marks(text, len(snippets))
     if invalid:
         logger.warning("模型引用了不存在的编号 %s（共 %d 个片段）", invalid, len(snippets))
