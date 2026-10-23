@@ -560,15 +560,44 @@ def looks_like_refusal(answer: str, citation_count: int) -> bool:
     return any(p.casefold() in lowered for p in _REFUSAL_PATTERNS)
 
 
+# 回答开头可能出现的「假拒答」句首
+_FALSE_REFUSAL_LEAD = re.compile(
+    r"^\s*(?:提供的)?资料中(?:没有|未)(?:相关|直接|明确)?(?:内容|提到|给出|说明)?"
+    r"[^\n]{0,12}?[。：:，,\s]*"
+)
+
+
+def drop_false_refusal(answer: str, citation_count: int) -> str:
+    """删掉「先说不相干、后面又给出答案」的开场白。
+
+    为什么用后处理而不是只靠提示词：
+    我们在系统提示里加了「能答就直接答，不要先写没有相关内容」，
+    但模型对「只给出整体配置、未按子模型分列」这类情况仍会先写一句拒答。
+    实测「训练 Base 模型用了多少 GPU」的回答是
+    「提供的资料中没有相关内容。资料中仅给出整体训练配置为 eight P100 GPUs [12]」——
+    内容是对的，但开头那句会让人误以为没答。
+    这种措辞问题用确定性后处理最可靠：只要回答确实带了合法引用
+    （说明它在引用资料作答），就把开头的拒答句剥掉。
+    真正无引用的拒答完全不受影响。
+    """
+    if citation_count <= 0 or not answer:
+        return answer
+    stripped = _FALSE_REFUSAL_LEAD.sub("", answer, count=1).strip()
+    # 剥完太短说明原句不只是「开场白」，保守起见保留原文
+    return stripped if len(stripped) >= 12 else answer
+
+
 # ---------------------------------------------------------------- 编排
 
 # 送给模型的片段数上限。
-# 实测演进（论文库从 6 篇扩到 8 篇、1709 块）：
-#   6 条：「训练 Base 模型用了多少 GPU」所需的 5.2 节排不进来，拒答；
+# 实测演进（论文库从 6 篇扩到 15 篇、4314 块）：
+#   6 条：「训练 Base 模型用了多少 GPU」所需的硬件段落排不进来，拒答；
 #   8 条：6 篇时够用，8 篇时仍拒答；
-#  12 条：8 篇下可稳定命中该段落。
-# 再往上（16、20）答案不再变化，只是白耗 token，因此取 12。
-DEFAULT_TOP_K = 12
+#  12 条：8 篇（1709 块）下稳定；15 篇（4314 块）时该段落又排不进来；
+#  16 条：15 篇下可命中（实测该问题上下文里出现了「eight P100 GPUs」）。
+# 再多（20）答案质量不再提升，只是白耗 token。
+# 结论：片段数要随语料规模上调，当前取 16。
+DEFAULT_TOP_K = 16
 
 
 async def answer(
@@ -645,6 +674,8 @@ async def answer(
 
     citations = build_citations(valid, snippets)
     cleaned = sanitize_answer(text, len(snippets))
+    # 有引用却以「没有相关内容」开头 → 删掉那句开场白（见 drop_false_refusal）
+    cleaned = drop_false_refusal(cleaned, len(citations))
 
     return AnswerResult(
         question=question,
@@ -758,6 +789,8 @@ async def answer_stream(
 
     cleaned = sanitize_answer(raw, len(snippets))
     final_citations = build_citations(valid, snippets)
+    # 与 answer() 一致：有引用却以「没有相关内容」开头时删掉那句开场白
+    cleaned = drop_false_refusal(cleaned, len(final_citations))
 
     yield {
         "type": "done",
