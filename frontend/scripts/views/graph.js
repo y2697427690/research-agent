@@ -313,9 +313,18 @@ window.App = window.App || {};
       return '#5b6379';
     };
 
+    // 连线与箭头颜色必须跟随主题：
+    // 原先写死成 rgba(255,255,255,0.16)（白色 16%），那是深色主题下的浅线，
+    // 换到浅色主题就等于「白线画在白底上」——截图里只剩一堆孤立的圆点，
+    // 完全看不出引用关系。这里按当前主题取色。
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const EDGE_COLOR = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(96,110,135,0.42)';
+    const EDGE_HOT = isDark ? 'rgba(120,150,255,0.85)' : 'rgba(79,110,247,0.85)';
+    const ARROW_COLOR = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(96,110,135,0.55)';
+
     const defs = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" ' +
       'markerHeight="6" orient="auto-start-reverse">' +
-      '<path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.25)"/></marker></defs>';
+      '<path d="M 0 0 L 10 5 L 0 10 z" fill="' + ARROW_COLOR + '"/></marker></defs>';
 
     // ---- 引用边 ----
     let edgeSvg = '';
@@ -330,7 +339,7 @@ window.App = window.App || {};
       const hot = st.graph.selectedId && (e.from === st.graph.selectedId || e.to === st.graph.selectedId);
       edgeSvg += '<path d="M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' Q' + mx.toFixed(1) + ' ' + my.toFixed(1) +
         ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1) + '" fill="none" stroke="' +
-        (hot ? 'rgba(79,110,247,.85)' : 'rgba(255,255,255,0.16)') + '" stroke-width="' + (hot ? 1.8 : 1) +
+        (hot ? EDGE_HOT : EDGE_COLOR) + '" stroke-width="' + (hot ? 1.8 : 1.2) +
         '" marker-end="url(#arrow)"/>';
     });
 

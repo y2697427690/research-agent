@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"/>
+<title>科研小助手 Agent</title>
+<style>
+@page { size: A4; margin: 20mm 17mm 18mm 17mm; }
+* { box-sizing: border-box; }
+body {
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
+  font-size: 10.5pt; line-height: 1.75; color: #1b2230; margin: 0;
+}
+h1 { font-size: 17pt; margin: 0 0 10pt; padding-bottom: 6pt;
+      border-bottom: 2pt solid #2f6fed; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { font-size: 13pt; margin: 16pt 0 6pt; color: #1f3f8f; page-break-after: avoid; }
+h3 { font-size: 11.5pt; margin: 12pt 0 4pt; color: #2456c9; page-break-after: avoid; }
+h4 { font-size: 10.5pt; margin: 10pt 0 3pt; page-break-after: avoid; }
+p { margin: 0 0 7pt; text-align: justify; }
+ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
+li { margin: 0 0 3pt; }
+table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.5pt; }
+th, td { border: 0.6pt solid #b9c2d0; padding: 4pt 6pt; vertical-align: top; }
+th { background: #eef3fb; text-align: left; font-weight: 600; }
+tr { page-break-inside: avoid; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 9pt;
+        background: #f2f4f7; padding: 0.5pt 3pt; border-radius: 2pt; }
+pre { background: #f7f8fa; border: 0.6pt solid #dde3ec; border-left: 2.5pt solid #2f6fed;
+       padding: 7pt 9pt; margin: 6pt 0 9pt; overflow: hidden; page-break-inside: avoid; }
+pre code { background: none; padding: 0; font-size: 8.6pt; line-height: 1.55; }
+blockquote { margin: 6pt 0 9pt; padding: 6pt 9pt; background: #f6f8fc;
+              border-left: 2.5pt solid #8aa6e8; color: #3a4460; }
+figure { margin: 8pt 0 10pt; text-align: center; page-break-inside: avoid; }
+img { max-width: 100%; border: 0.6pt solid #dde3ec; }
+figcaption { font-size: 9pt; color: #5b6472; margin-top: 3pt; }
+a { color: #2f6fed; text-decoration: none; }
+hr { border: none; border-top: 0.6pt solid #dde3ec; margin: 10pt 0; }
+
+/* 封面 */
+.cover { page-break-after: always; padding-top: 55mm; text-align: center; }
+.cover .kicker { font-size: 10pt; letter-spacing: 3pt; color: #2f6fed; margin-bottom: 8mm; }
+.cover h1 { font-size: 24pt; border: none; page-break-before: avoid; margin: 0 0 6mm;
+            line-height: 1.35; }
+.cover .sub { font-size: 12pt; color: #4a5468; margin-bottom: 30mm; }
+.cover .meta { font-size: 10.5pt; color: #4a5468; line-height: 2; }
+.cover .rule { width: 40mm; height: 2pt; background: #2f6fed; margin: 0 auto 8mm; }
+
+/* 目录 */
+.toc { page-break-after: always; }
+.toc h1 { page-break-before: avoid; }
+.toc ol { list-style: none; padding-left: 0; font-size: 10.5pt; }
+.toc li { margin: 4pt 0; }
+.toc .lv2 { padding-left: 14pt; color: #4a5468; font-size: 9.8pt; }
+</style></head>
+<body>
+<div class="cover">
+  <div class="kicker">2026 科研小助手 Agent 大赛</div>
+  <div class="rule"></div>
+  <h1>科研小助手 Agent</h1>
+  <div class="sub">面向科研文献的解析、问答与引用分析系统 · 技术文档</div>
+  <div class="meta">
+    参赛形式：个人参赛<br/>
+    作者：【姓名】<br/>
+    单位：【学校 / 专业 / 年级】<br/>
+    日期：2026 年 11 月<br/>
+    在线演示：http://47.96.97.141:8000/
+  </div>
+</div><div class="toc"><h1>目 录</h1><ol><li><span class="idx">1</span> 第 1 章 项目概述</li><li class="lv2">1.1 项目背景</li><li class="lv2">1.2 项目目标</li><li class="lv2">1.3 目标用户与使用场景</li><li class="lv2">1.4 交付形态</li><li class="lv2">1.5 当前实现范围（如实说明）</li></ol></div><h1>第 1 章 项目概述</h1>
+<h2>1.1 项目背景</h2>
+<p>科研人员读一篇论文的时间成本，远比&quot;读不完&quot;更具体：为了确认一句话里的数字，往往要把 30 页 PDF 从头翻到尾；用通用大模型总结论文时，模型会给出格式漂亮但<strong>出处不明</strong>的结论，逐条回原文核对的时间比直接读还长；当同一方向积累到十几篇论文时，引用关系散落在各自的参考文献里，很难判断哪篇是奠基工作、哪篇只是衍生。</p>
+<p>本项目针对这三件事分别给出可验证的答案：</p>
+<table><thead><tr>
+<th>痛点</th>
+<th>具体表现</th>
+<th>本项目的应对</th>
+</tr></thead><tbody>
+<tr><td><strong>找</strong></td><td>想确认「训练 Base 模型用了多少 GPU」，需要通读全文</td><td>混合检索（关键词 + 向量）定位到段落级片段</td></tr>
+<tr><td><strong>核</strong></td><td>大模型总结会编造，无法判断哪句话有原文支撑</td><td>抗幻觉三层机制：无命中即拒答、强制引用编号、服务端校验编号</td></tr>
+<tr><td><strong>连</strong></td><td>十几篇论文的引用关系散落在参考文献里</td><td>抽取引用关系并构图，用入度 / PageRank / 连通分量识别基石论文</td></tr>
+</tbody></table>
+<h2>1.2 项目目标</h2>
+<p>构建一个<strong>面向个人科研阅读</strong>的 AI 助手，覆盖&quot;上传 → 解析 → 检索 → 问答 → 阅读 → 翻译 → 引用分析 → 写作&quot;的完整链路，并且做到：</p>
+<ol><li><strong>每个结论都能溯源</strong>：回答里的每个编号都能点回原文段落；</li><li><strong>没把握就拒答</strong>：检索不到或在资料中找不到依据时，明确说&quot;资料中没有&quot;，而不是编造；</li><li><strong>界面上的数字都能追到数据库</strong>：不展示无法追溯的统计，宁可移除；</li><li><strong>工程上可验证</strong>：后端单元测试、前端冒烟测试、线上端到端验证三层覆盖。</li></ol>
+<h2>1.3 目标用户与使用场景</h2>
+<p>面向<strong>个人研究者、研究生与高年级本科生</strong>。典型使用场景：</p>
+<ul><li><strong>精读单篇</strong>：上传一篇论文，反复追问方法细节、超参数、实验设置；</li><li><strong>横向对比</strong>：上传同一方向的多篇论文，让系统分述各家做法并指出承袭与差异；</li><li><strong>文献综述起步</strong>：先看引用图谱确定主干文献，再逐篇问答；</li><li><strong>非母语阅读</strong>：中英对照阅读，代码与公式保留英文原文。</li></ul>
+<h2>1.4 交付形态</h2>
+<table><thead><tr>
+<th>形态</th>
+<th>说明</th>
+</tr></thead><tbody>
+<tr><td><strong>在线演示</strong></td><td><code>http://47.96.97.141:8000/</code>，阿里云 ECS 部署，含 15 篇真实论文与 4314 个已向量化分块</td></tr>
+<tr><td><strong>接口文档</strong></td><td>同一域名的 <code>/docs</code>，17 个接口，可直接在线调试</td></tr>
+<tr><td><strong>源码</strong></td><td>GitHub 公开仓库，含完整提交历史、部署脚本与验证脚本</td></tr>
+<tr><td><strong>本地运行</strong></td><td>一条命令 <code>./start.ps1</code> 启动后端并打开前端</td></tr>
+</tbody></table>
+<h2>1.5 当前实现范围（如实说明）</h2>
+<p>本项目在比赛周期内完成，功能覆盖情况如下表。<strong>未实现的部分同样列出</strong>，并在第 8 章给出改进路径——我们认为把边界讲清楚，比含糊带过更符合工程规范。</p>
+<table><thead><tr>
+<th>能力</th>
+<th>状态</th>
+</tr></thead><tbody>
+<tr><td>PDF 上传 / 批量 / 内容去重 / 版本识别</td><td>已实现</td></tr>
+<tr><td>文本层 PDF 解析（标题、作者、摘要、章节树、参考文献）</td><td>已实现</td></tr>
+<tr><td>分块 + 向量化 + 混合检索（BM25 + 向量 + RRF 融合）</td><td>已实现</td></tr>
+<tr><td>单篇问答 / 多篇跨文献对比 / SSE 流式输出</td><td>已实现</td></tr>
+<tr><td>中英对照阅读 + 整篇翻译（分块缓存）</td><td>已实现</td></tr>
+<tr><td>引用关系抽取 + 引用图谱（入度 / PageRank / 连通分量）</td><td>已实现</td></tr>
+<tr><td>arXiv 关键词检索 + 一键下载入库并解析</td><td>已实现</td></tr>
+<tr><td>扫描件 OCR</td><td>未实现（仅标记&quot;需校对&quot;）</td></tr>
+<tr><td>表格 / 公式 / 图表的提取与渲染</td><td>部分（表格提取能力弱，公式按纯文本）</td></tr>
+<tr><td>正文引用角标与参考文献的双向跳转</td><td>未实现（数据已就绪）</td></tr>
+<tr><td>划词翻译接真实模型</td><td>部分（当前为术语表实现）</td></tr>
+<tr><td>导出 Markdown / HTML / 原位排版 PDF</td><td>未实现</td></tr>
+<tr><td>引用含金量筛选、定期追踪、多用户推荐</td><td>未实现</td></tr>
+</tbody></table></body></html>
