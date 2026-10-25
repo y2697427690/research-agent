@@ -425,6 +425,22 @@ t('文库：每行都有阅读 / 元数据 / 重新解析 / 删除四个操作',
   mustFindAll('[data-action="delete-paper"]', 30, '删除按钮');
 });
 
+t('文库：元数据抽屉字段可编辑，版本号只读（保存走 PATCH 接口）', () => {
+  restore();
+  const html = String(App.views.library.metaDrawerHtml('p-attention-v7'));
+  // 可编辑字段：标题 / 作者 / 年份 / 会议 / arXiv / 关键词
+  ['meta-title', 'meta-authors', 'meta-year', 'meta-venue', 'meta-arxiv', 'meta-keywords']
+    .forEach((id) => {
+      if (html.indexOf('id="' + id + '"') === -1) throw new Error('缺少可编辑字段 ' + id);
+    });
+  // 版本号来自文件名，必须只读，否则用户会以为能改
+  if (html.indexOf('disabled') === -1) throw new Error('版本号未设为只读');
+  // 保存按钮要带上 paperId，保存逻辑据此调 PATCH
+  if (html.indexOf('id="meta-save" data-id="p-attention-v7"') === -1) {
+    throw new Error('保存按钮缺少 data-id');
+  }
+});
+
 t('文库：扫描件与超长书籍都被正确标注', () => {
   restore();
   renderView('library');

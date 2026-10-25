@@ -394,6 +394,9 @@ window.App = window.App || {};
               <button class="btn btn-primary" data-action="translate-abstract">翻译为英文</button>
               <button class="btn btn-ghost" id="use-lib-abstract">重新载入文库摘要</button>
             </div>
+            <div class="muted tiny mt-8">
+              演示实现：按内置术语表逐词替换，未接入翻译模型。术语表与文库论文标题 / 关键词对齐，专有名词译法因此保持一致。
+            </div>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views/library.js — 文库（论文管理）
    ----------------------------------------------------------------------------
    对应需求 1.1「PDF 文件管理和解析」：
@@ -548,35 +548,34 @@ window.App = window.App || {};
         <button class="btn btn-sm btn-ghost" data-action="close-drawer">✕</button>
       </div>
       <div class="modal-body">
-        <div class="muted small mb-16">这是 CRUD 中的 Update 部分：修正自动解析结果（作者顺序、年份、会议、标签等）。</div>
+        <div class="muted small mb-16">这是 CRUD 中的 Update 部分：修正自动解析结果（作者顺序、年份、会议、标签等）。保存后写入数据库。</div>
         <label class="field-label">标题</label>
-        <input class="input mb-12" value="${p.title}" />
+        <input class="input mb-12" id="meta-title" value="${p.title}" />
         <label class="field-label">作者（每行一位，顺序即署名顺序）</label>
-        <textarea class="textarea mb-12" rows="4">${(p.authors || []).join('\n')}</textarea>
+        <textarea class="textarea mb-12" id="meta-authors" rows="4">${(p.authors || []).join('\n')}</textarea>
         <div class="grid grid-2">
           <div>
             <label class="field-label">年份</label>
-            <input class="input mb-12" value="${p.year}" />
+            <input class="input mb-12" id="meta-year" value="${p.year || ''}" inputmode="numeric" />
           </div>
           <div>
-            <label class="field-label">版本</label>
-            <input class="input mb-12" value="${p.version}" />
+            <label class="field-label">版本（只读）</label>
+            <input class="input mb-12" value="${p.version ? 'v' + String(p.version).replace(/^v/i, '') : '未标注'}" disabled />
+            <div class="muted tiny mt-8">版本号来自文件名，不能手改</div>
           </div>
         </div>
         <label class="field-label">会议 / 期刊</label>
-        <input class="input mb-12" value="${p.venue}" />
+        <input class="input mb-12" id="meta-venue" value="${p.venue || ''}" />
         <label class="field-label">arXiv ID</label>
-        <input class="input mb-12" value="${p.arxiv || ''}" />
+        <input class="input mb-12" id="meta-arxiv" value="${p.arxiv || ''}" />
         <label class="field-label">关键词（逗号分隔）</label>
-        <input class="input mb-12" value="${(p.keywords || []).join(', ')}" />
-        <label class="field-label">备注</label>
-        <textarea class="textarea" rows="3">${p.note || ''}</textarea>
+        <input class="input" id="meta-keywords" value="${(p.keywords || []).join(', ')}" />
       </div>
       <div class="modal-foot">
         <button class="btn btn-danger" data-action="delete-paper" data-id="${p.id}">删除该论文</button>
         <div class="spacer"></div>
         <button class="btn btn-ghost" data-action="close-drawer">取消</button>
-        <button class="btn btn-primary" id="meta-save">保存</button>
+        <button class="btn btn-primary" id="meta-save" data-id="${p.id}">保存</button>
       </div>`);
   }
 
@@ -594,11 +593,62 @@ window.App = window.App || {};
     compareRows,
   };
 
+  /**
+   * 读取抽屉表单 → 调 PATCH /papers/:id。
+   *
+   * 之前这里只弹一个 toast「已保存（演示：真实实现会 PATCH）」——
+   * 用户改完标题刷新就变回原样，属于假按钮。现在真正写入数据库：
+   * 保存成功后重新拉取列表，界面上的标题立即变化。
+   * 版本号不可改（来自文件名），所以表单里是只读展示。
+   */
+  async function saveMeta(paperId) {
+    const val = (id) => {
+      const el = U.$('#' + id);
+      return el ? el.value.trim() : '';
+    };
+
+    const payload = {};
+    const title = val('meta-title');
+    if (title) payload.title = title;
+    const authors = val('meta-authors');
+    if (authors) payload.authors = authors;
+    const yearRaw = val('meta-year');
+    if (yearRaw) {
+      const year = parseInt(yearRaw, 10);
+      if (!Number.isFinite(year) || year < 1000 || year > 2999) {
+        App.ui.toast('年份需为 1000~2999 之间的整数', 'warn', 3000);
+        return;
+      }
+      payload.year = year;
+    }
+    const venue = val('meta-venue');
+    if (venue) payload.venue = venue;
+    const arxiv = val('meta-arxiv');
+    if (arxiv) payload.arxiv_id = arxiv;
+    const keywords = val('meta-keywords');
+    if (keywords) payload.keywords = keywords;
+
+    if (!Object.keys(payload).length) {
+      App.ui.toast('没有需要保存的修改', 'warn', 2200);
+      return;
+    }
+
+    try {
+      await App.api.updatePaper(paperId, payload);
+      await App.store.actions.loadPapers();
+      App.store.actions.drawer(null);
+      App.ui.toast('元数据已保存', 'ok', 2200);
+    } catch (err) {
+      App.ui.toast('保存失败：' + err.message, 'error', 4000);
+    }
+  }
+
   /* 抽屉保存按钮与筛选框（因为抽屉是后插入 DOM 的，这里挂在 document 上统一处理） */
   document.addEventListener('click', (e) => {
     if (e.target.id === 'meta-save') {
-      App.store.actions.drawer(null);
-      App.ui.toast('元数据已保存（演示：真实实现会 PATCH /api/papers/:id）', 'ok');
+      const id = e.target.dataset.id
+        || (App.store.state.ui.drawer && App.store.state.ui.drawer.payload.paperId);
+      if (id) saveMeta(id);
     }
     if (e.target.id === 'filter' || (e.target.dataset && e.target.dataset.bg)) return;
   });
