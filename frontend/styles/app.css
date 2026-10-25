@@ -135,6 +135,23 @@
   50% { box-shadow: 0 0 0 5px rgba(47, 179, 122, 0); }
 }
 
+/* 侧边栏底部的次要入口（需求对照表）：小字、低对比，不抢功能导航的注意力 */
+.side-link {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.side-link:hover { color: var(--text-1); background: var(--bg-2); }
+
 /* ---- 主区域 ---- */
 .main {
   display: flex;

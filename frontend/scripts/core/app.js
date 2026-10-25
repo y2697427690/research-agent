@@ -59,6 +59,10 @@ window.App = window.App || {};
     {
       id: 'guide', title: '说明 / 对照表', icon: '؟', group: '创作工具',
       subtitle: '需求 → 页面元素的一一对应关系',
+      // 不在主导航显示：它是「需求对照表」，给开发/评审看，
+      // 不属于产品功能。入口挪到侧边栏底部的「能力说明」小链接，
+      // 答辩/演示时再主动打开。
+      hidden: true,
       view: () => App.views.guide,
     },
   ];
@@ -98,6 +102,10 @@ window.App = window.App || {};
                 <span class="muted tiny" id="sys-status-sub">检测中</span>
               </div>
             </div>
+            <!-- 需求对照表不属于产品功能，放成底部小链接，答辩时主动打开即可 -->
+            <button class="side-link" data-action="open-guide" title="需求条目 → 界面元素 → 代码位置">
+              能力说明 · 需求对照
+            </button>
           </div>
         </aside>
         <div class="main">
@@ -162,6 +170,8 @@ window.App = window.App || {};
       case 'close-drawer': App.ui.drawer(null); break;
       case 'parse-detail': App.ui.drawer('parse', { paperId: data.id }); break;
       case 'back-to-list': S.go('library'); break;
+      // 需求对照表：不在主导航里，从侧边栏底部的小链接进入
+      case 'open-guide': S.go('guide'); break;
 
       /* ---- 阅读器 ---- */
       case 'reader-mode': S.setReaderMode(data.mode); break;
@@ -232,7 +242,8 @@ window.App = window.App || {};
   function renderNav() {
     const cur = App.store.state.route;
     const groups = [];
-    VIEWS.forEach((v) => {
+    // hidden 的视图不进导航（例如「需求对照表」只在侧边栏底部留入口）
+    VIEWS.filter((v) => !v.hidden).forEach((v) => {
       let g = groups.find((x) => x.name === v.group);
       if (!g) { g = { name: v.group, items: [] }; groups.push(g); }
       g.items.push(v);

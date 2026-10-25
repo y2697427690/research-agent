@@ -509,6 +509,21 @@ t('说明页：需求对照表覆盖 1.1–1.6 与评分标准', () => {
   mustText('scripts/views/library.js');
   mustText('research-assistant/');
 });
+t('说明页：不在主导航，标记为 hidden 但视图仍可用', () => {
+  restore();
+  const guide = App.VIEWS.find((v) => v.id === 'guide');
+  if (!guide) throw new Error('guide 视图不存在');
+  if (guide.hidden !== true) throw new Error('guide 未标记 hidden，会挤占主导航');
+  // 隐藏的视图仍然要能渲染（底部小链接要跳得进去）
+  renderView('guide');
+  mustText('需求');
+  // 其余 6 个功能视图都不应被隐藏
+  const visible = App.VIEWS.filter((v) => !v.hidden).map((v) => v.id);
+  ['dashboard', 'library', 'reader', 'qa', 'graph', 'discover', 'writing']
+    .forEach((id) => {
+      if (!visible.includes(id)) throw new Error('功能视图被误隐藏：' + id);
+    });
+});
 
 /* --- 3. 阅读器 --- */
 t('阅读器：打开 Attention 并渲染正文 / 目录 / 引文', () => {
