@@ -76,7 +76,14 @@ window.App = window.App || {};
       <div class="app">
         <aside class="sidebar">
           <div class="brand">
-            <div class="brand-logo">科</div>
+            <div class="brand-logo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <path d="M7.4 3.2h6.1L17 6.7v12.1a1.4 1.4 0 0 1-1.4 1.4H7.4A1.4 1.4 0 0 1 6 18.8V4.6a1.4 1.4 0 0 1 1.4-1.4Z" fill="#ffffff"/>
+                <path d="M13.5 3.2 17 6.7h-3.5V3.2Z" fill="#c9d8ff"/>
+                <path d="M8.6 11.1h6.0M8.6 13.8h4.2" stroke="#2f6fed" stroke-width="1.1" stroke-linecap="round" opacity=".5"/>
+                <path d="m18.9 3.9.5 1.25 1.25.5-1.25.5-.5 1.25-.5-1.25-1.25-.5 1.25-.5.5-1.25Z" fill="#f5b942"/>
+              </svg>
+            </div>
             <div class="col" style="line-height:1.2">
               <span class="brand-name">科研小助手</span>
               <span class="brand-sub">Research Agent</span>
@@ -84,11 +91,11 @@ window.App = window.App || {};
           </div>
           <nav class="nav" id="nav"></nav>
           <div class="side-foot">
-            <div class="side-status">
-              <span class="dot pulse"></span>
+            <div class="side-status" id="sys-status" title="来自 /api/v1/health 的实时状态">
+              <span class="dot pulse" id="sys-dot"></span>
               <div class="col" style="line-height:1.3">
-                <span>本地模型已就绪</span>
-                <span class="muted tiny">DeepSeek-V3 · 671B MoE</span>
+                <span id="sys-status-text">正在连接后端…</span>
+                <span class="muted tiny" id="sys-status-sub">检测中</span>
               </div>
             </div>
           </div>
@@ -384,6 +391,7 @@ window.App = window.App || {};
     (async () => {
       try {
         const health = await App.api.health();
+        applySystemStatus(health);
         const papers = await App.store.actions.loadPapers();
         if (papers.length > 0) {
           App.store.state.qa.paperIds = [papers[0].id];
@@ -392,6 +400,7 @@ window.App = window.App || {};
         App.ui.toast('已连接后端：' + (health.app || '服务')
           + '，文库 ' + papers.length + ' 篇', 'ok', 2600);
       } catch (err) {
+        applySystemStatus(null, err);
         App.ui.toast('未连接后端，当前为演示数据（' + err.message + '）', 'warn', 4000);
       }
     })();
@@ -411,8 +420,57 @@ window.App = window.App || {};
     });
   }
 
+  /**
+   * 把 /health 的真实结果写进侧边栏底部。
+   *
+   * 为什么必须来自接口：这里原来写死「本地模型已就绪 / DeepSeek-V3 · 671B MoE」，
+   * 而本项目的对话能力实际走 https://api.deepseek.com/v1 的云端接口，
+   * 既不是本地模型，也无法证实「671B MoE」这类参数——属于界面在编造事实。
+   * 改为读 health 后，这一行同时变成了「真实健康指示器」：
+   * 后端没连上、Key 没配、接口可达性异常，都能一眼看出来。
+   */
+  function applySystemStatus(health, err) {
+    const dot = U.$('#sys-dot');
+    const main = U.$('#sys-status-text');
+    const sub = U.$('#sys-status-sub');
+    if (!main || !sub) return;
+
+    const set = (color, text, subText, pulsing) => {
+      if (dot) {
+        dot.style.background = color;
+        dot.className = pulsing ? 'dot pulse' : 'dot';
+      }
+      main.textContent = text;
+      sub.textContent = subText;
+    };
+
+    if (!health) {
+      set('var(--danger)', '未连接后端', '当前显示演示数据', false);
+      if (err && App.ui && App.ui.toast) {
+        // 已由调用方 toast，这里不重复提示
+      }
+      return;
+    }
+
+    const llm = health.llm || {};
+    const db = health.db || {};
+    if (!llm.configured) {
+      set('var(--warn)', '对话模型未配置', '需设置 APP_LLM_API_KEY', false);
+      return;
+    }
+    if (llm.reachable === false) {
+      set('var(--warn)', '对话模型不可达', '检索与解析仍可用', false);
+      return;
+    }
+    // reachable 为 null 表示后端未做主动探测，此时以「已配置」为准
+    const model = llm.model || 'deepseek-chat';
+    set('var(--ok)', 'DeepSeek API 已连接',
+      model + ' · ' + (db.ok ? '数据库正常' : '数据库异常'), true);
+  }
+
   App.VIEWS = VIEWS;
   App.boot = boot;
   App.render = render;
   App.viewById = viewById;
+  App.applySystemStatus = applySystemStatus;
 })(window.App);
