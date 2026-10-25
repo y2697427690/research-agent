@@ -119,8 +119,8 @@
   --ease: cubic-bezier(0.4, 0.14, 0.3, 1);
 
   /* ---- 布局尺寸 ---- */
-  --sidebar-w: 232px;
-  --topbar-h: 64px;
+  --sidebar-w: 248px;
+  --topbar-h: 66px;
 
   /* ---- 代码 / 高亮块背景（两套主题差异较大，单独抽出） ---- */
   --code-bg: #f4f6f9;
