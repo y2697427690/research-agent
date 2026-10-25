@@ -284,7 +284,7 @@ def detect_duplicate(
                 reasons=[f"同一 arXiv 编号 {new_id}，版本号无法区分"],
             )
 
-    # 3) 文件名归一化后相同
+    # 4) 文件名归一化后相同
     new_key = normalize_stem(Path(file_name).stem)
     if new_key:
         for item in existing:
