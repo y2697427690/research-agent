@@ -168,6 +168,11 @@ window.App = window.App || {};
       case 'continue-translate':
         S.ensureTranslation(App.store.state.currentPaperId);
         break;
+      // 用户主动停止：只是打标记让翻译循环下一批不再发起，
+      // 已发出的那一批会跑完（协作式取消），最多多等一批
+      case 'cancel-translate':
+        S.cancelTranslation(App.store.state.currentPaperId || undefined);
+        break;
       case 'clear-selection': App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: null }) }, 'reader'); break;
       case 'copy-text': App.views.reader.copy(el); break;
 

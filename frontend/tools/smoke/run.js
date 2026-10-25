@@ -531,6 +531,27 @@ t('阅读器：三种模式切换都不报错', () => {
     renderView('reader');
   });
 });
+t('阅读器：翻译中显示「停止翻译」，停止后进度保留且可继续', () => {
+  restore();
+  App.store.actions.openPaper('p-attention-v7');
+  App.store.actions.setReaderMode('bilingual');
+  // 造一个"翻译中"的状态：真实场景由 ensureTranslation 每批写回
+  App.store.state.reader.translating = { paperId: 'p-attention-v7', done: 20, total: 57 };
+  renderView('reader');
+  mustFind('[data-action="cancel-translate"]');
+
+  // 点停止 → 进度清空、记下"已停止"、不再显示停止按钮
+  App.store.actions.cancelTranslation('p-attention-v7');
+  if (App.store.state.reader.translating) throw new Error('停止后 translating 应清空');
+  if (App.store.state.reader.translateStoppedId !== 'p-attention-v7') {
+    throw new Error('未记录已停止的论文 id');
+  }
+  // 必须重绘后才知道界面是否真的不再显示按钮（旧节点还在文档里）
+  renderView('reader');
+  if (countExact('[data-action="cancel-translate"]') !== 0) {
+    throw new Error('停止后不应再出现停止按钮');
+  }
+});
 t('阅读器：公式块保留 LaTeX 原文（对应需求「公式不翻译」）', () => {
   restore();
   App.store.actions.openPaper('p-attention-v7');

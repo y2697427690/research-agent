@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    app.css — 应用外壳布局 + 公共组件样式
    ----------------------------------------------------------------------------
    包含三部分：
@@ -64,11 +64,39 @@
   border-radius: var(--r-md);
   color: var(--text-1);
   text-align: left;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease),
+              background-size 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
   position: relative;
+
+  /* 悬停时灰色从右下角铺开：
+     用 background-image 而不是 ::before 伪元素，是因为 .nav-item.active::before
+     已经被左侧那条蓝色竖条占用；background-image 天然画在文字下方，不必处理 z-index。
+     background-size 由 0 放大到 260% 就形成「从角落扩散」的观感。 */
+  background-image: radial-gradient(circle at 100% 100%,
+                    var(--nav-hover, var(--bg-2)) 0%,
+                    var(--nav-hover, var(--bg-2)) 52%,
+                    transparent 72%);
+  background-repeat: no-repeat;
+  background-position: 100% 100%;
+  background-size: 0% 0%;
 }
-.nav-item:hover { background: var(--bg-2); color: var(--text-0); }
-.nav-item.active { background: var(--sel-bg); color: var(--sel-fg); font-weight: 600; }
+.nav-item:hover {
+  /* 不再写死 background: var(--bg-2)，否则会盖住渐变、看不出扩散过程 */
+  background-color: transparent;
+  background-size: 260% 300%;
+  color: var(--text-0);
+}
+/* 当前页是蓝色实底，叠加灰色会发脏，直接关掉渐变 */
+.nav-item.active {
+  background-image: none;
+  background-color: var(--sel-bg);
+  color: var(--sel-fg);
+  font-weight: 600;
+}
+/* 系统里关掉动效时直接到最终状态 */
+@media (prefers-reduced-motion: reduce) {
+  .nav-item { transition: none; }
+}
 .nav-item.active::before {
   content: "";
   position: absolute; left: -10px; top: 50%; transform: translateY(-50%);

@@ -204,6 +204,9 @@ window.App = window.App || {};
       if (!target) return;
       state.__translateCancel = state.__translateCancel || {};
       state.__translateCancel[target] = true;
+      // 记下「用户主动停在哪篇」：提示条据此显示「已停止，已翻译 x/y 段」，
+      // 而不是与「从未翻译过」共用同一句文案。
+      state.reader.translateStoppedId = target;
       if (current && current.paperId === target) {
         state.reader.translating = null;
         notify('reader');
@@ -526,6 +529,10 @@ window.App = window.App || {};
       // 清掉上一次的取消标记，否则重新进入阅读器会立刻被判定为"已取消"
       state.__translateCancel = state.__translateCancel || {};
       state.__translateCancel[paperId] = false;
+      // 重新开始翻译就撤掉「已停止」提示，否则会一直挂着上一轮的状态
+      if (state.reader.translateStoppedId === paperId) {
+        state.reader.translateStoppedId = null;
+      }
 
       let last = null;
       let cancelled = false;

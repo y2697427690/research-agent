@@ -229,15 +229,21 @@ window.App = window.App || {};
       return h`
         <div class="rd-translate-hint">
           <span class="dot-pulse"></span>
-          正在翻译（${t.done}/${t.total}），完成后自动显示中文；离开本页会停止翻译。
+          正在翻译（${t.done}/${t.total}），完成后自动显示中文。
+          <button class="btn btn-sm btn-ghost" data-action="cancel-translate">停止翻译</button>
         </div>`;
     }
     const doc = App.data && App.data.getDoc ? App.data.getDoc(paperId) : null;
     if (doc && doc.isReal && doc.totalChunks > 0
       && doc.translatedChunks < doc.totalChunks) {
+      // 区分「用户主动停止」与「没开始过」：停止后明确提示已译到哪，
+      // 并保留继续入口，避免用户以为进度丢了。
+      const stopped = st.reader.translateStoppedId === paperId;
       return h`
         <div class="rd-translate-hint">
-          已翻译 ${doc.translatedChunks}/${doc.totalChunks} 段，尚未完成。
+          ${stopped
+            ? `已停止，已翻译 ${doc.translatedChunks}/${doc.totalChunks} 段。`
+            : `已翻译 ${doc.translatedChunks}/${doc.totalChunks} 段，尚未完成。`}
           <button class="btn btn-sm btn-ghost" data-action="continue-translate">继续翻译</button>
         </div>`;
     }
