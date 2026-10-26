@@ -551,12 +551,15 @@ window.App = window.App || {};
       let cancelled = false;
 
       try {
-        // 上限 40 轮 × 每轮 20 块 = 800 块，足够覆盖任何论文；
-        // 同时防止后端异常时无限循环
+        // 首批只翻 5 段：让用户约 2 秒就能看到第一屏中文，
+        // 而不是干等 7 秒才出现任何内容。之后恢复每批 20 段，减少请求次数。
+        // 上限 40 轮，足够覆盖任何论文，同时防止后端异常时无限循环。
+        const FIRST_BATCH = 5;
         for (let round = 0; round < 40; round += 1) {
           if (state.__translateCancel[paperId]) { cancelled = true; break; }
 
-          const st = await App.api.translatePaper(paperId, { limit: step });
+          const limitThisRound = round === 0 ? Math.min(FIRST_BATCH, step) : step;
+          const st = await App.api.translatePaper(paperId, { limit: limitThisRound });
           last = st;
 
           const total = st.progress[0];
