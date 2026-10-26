@@ -83,7 +83,11 @@ window.App = window.App || {};
             </div>
             <div class="rd-pane-body" id="body-zh" data-pane="zh">
               ${U.raw(translateHint(st, paperId))}
-              ${U.raw(doc ? blocksHtml(doc.blocks, 'zh') : placeholderDoc(paper))}
+              ${U.raw(doc
+                ? (isTranslating(st, paperId) && (doc.translatedChunks || 0) === 0
+                  ? translatingSkeleton()
+                  : blocksHtml(doc.blocks, 'zh'))
+                : placeholderDoc(paper))}
             </div>
           </section>`) : ''}
       </div>
@@ -204,6 +208,28 @@ window.App = window.App || {};
   /* ==========================================================================
      4. 正文块渲染（按语言）
      ========================================================================== */
+  /** 当前是否正在翻译某篇论文 */
+  function isTranslating(st, paperId) {
+    const t = st.reader.translating;
+    return !!(t && t.paperId === paperId);
+  }
+
+  /**
+   * 译文面板的骨架屏。
+   *
+   * 为什么需要：翻译按批请求，第一批要 5~8 秒才回来。
+   * 这段时间里译文面板本来是空的，用户会以为"点了没反应"。
+   * 现在先铺几条灰条占位（带呼吸动画），视觉上明确表示"正在生成"。
+   */
+  function translatingSkeleton() {
+    const lines = [92, 84, 96, 70, 88, 62];
+    return h`
+      <div class="rd-skeleton" aria-busy="true" aria-label="正在翻译">
+        ${U.raw(lines.map((w) => h`
+          <span class="rd-skeleton-line" style="width:${w}%"></span>`).join(''))}
+      </div>`;
+  }
+
   /**
    * 译文面板标题旁的进度徽标。
    * 翻译是按批自动续的，用户需要知道"正在进行"与"已完成多少"，
@@ -212,24 +238,27 @@ window.App = window.App || {};
   function translateBadge(st, paperId) {
     const t = st.reader.translating;
     if (!t || t.paperId !== paperId) return '';
-    const pct = t.total ? Math.round((t.done / t.total) * 100) : 0;
+    // total 为 0 表示还没拿到总段数（首批请求尚未返回），此时只显示"翻译中…"
+    if (!t.total) return h`<span class="badge badge-outline mono">翻译中…</span>`;
+    const pct = Math.round((t.done / t.total) * 100);
     return h`<span class="badge badge-outline mono">翻译中 ${t.done}/${t.total} · ${pct}%</span>`;
   }
 
   /**
    * 译文面板顶部的提示条。
    * 三种状态：
-   *   翻译中   → 提示会自动续翻，可点返回终止
+   *   翻译中   → 提示会自动续翻，可手动停止
    *   部分已译 → 提示还剩多少段，点击继续
    *   已完成   → 不显示
    */
   function translateHint(st, paperId) {
     const t = st.reader.translating;
     if (t && t.paperId === paperId) {
+      const progress = t.total ? `（${t.done}/${t.total}）` : '';
       return h`
         <div class="rd-translate-hint">
           <span class="dot-pulse"></span>
-          正在翻译（${t.done}/${t.total}），完成后自动显示中文。
+          正在翻译${progress}，首批结果马上出来，完成后自动显示中文。
           <button class="btn btn-sm btn-ghost" data-action="cancel-translate">停止翻译</button>
         </div>`;
     }

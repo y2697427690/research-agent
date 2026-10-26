@@ -583,6 +583,17 @@ t('阅读器：翻译中显示「停止翻译」，停止后进度保留且可�
     throw new Error('停止后不应再出现停止按钮');
   }
 });
+t('阅读器：翻译首批返回前显示骨架屏与「翻译中…」，不是空白', () => {
+  restore();
+  App.store.actions.openPaper('p-attention-v7');
+  App.store.actions.setReaderMode('translation');
+  // 模拟「已开始翻译但第一批还没回来」：total 未知、译文数为 0
+  App.store.state.reader.translating = { paperId: 'p-attention-v7', done: 0, total: 0 };
+  renderView('reader');
+  mustFind('.rd-skeleton', '译文骨架屏');
+  mustFind('[data-action="cancel-translate"]');
+  mustText('翻译中');
+});
 t('文库：点删除会弹出确认框，且含「同时删除本地 PDF 文件」选项', () => {
   restore();
   renderView('library');

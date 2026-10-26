@@ -537,6 +537,16 @@ window.App = window.App || {};
         state.reader.translateStoppedId = null;
       }
 
+      // 立刻进入「翻译中」状态，不等第一批返回。
+      // 第一批要 5~8 秒，这期间如果状态还是空，译文面板就是一片空白，
+      // 用户会以为点了没反应。total 已知就带上进度，未知就只显示"翻译中…"。
+      state.reader.translating = {
+        paperId: paperId,
+        done: (first && first.translatedChunks) || 0,
+        total: (first && first.totalChunks) || 0,
+      };
+      notify('reader');
+
       let last = null;
       let cancelled = false;
 

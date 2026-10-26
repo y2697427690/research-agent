@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views.css — 各业务视图专属样式
    ----------------------------------------------------------------------------
    顺序与侧边栏一致：
@@ -220,6 +220,33 @@
   color: var(--text-1);
   font-size: 12.5px;
   line-height: 1.6;
+}
+/* 译文骨架屏：首批译文返回前（5~8 秒）先铺灰条，
+   让"正在生成"这件事在视觉上成立，而不是一片空白。 */
+.rd-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0;
+}
+.rd-skeleton-line {
+  display: block;
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(90deg,
+      var(--bg-3, #e9edf3) 25%,
+      var(--bg-2, #f2f4f7) 37%,
+      var(--bg-3, #e9edf3) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+/* 系统里关掉动效时不闪，保留静态灰条 */
+@media (prefers-reduced-motion: reduce) {
+  .rd-skeleton-line { animation: none; }
 }
 /* 呼吸圆点：不改颜色也能表达"正在进行"，比转圈更轻量 */
 .dot-pulse {
