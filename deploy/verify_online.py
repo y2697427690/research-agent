@@ -169,8 +169,19 @@ def main() -> int:
                     "page_count=%s" % detail.get("page_count"))
             c.check("标题已提取", bool(detail.get("title")),
                     "title=%s" % detail.get("title"))
-            c.check("文件名正确", detail.get("file_name") == pdf.name,
-                    detail.get("file_name", ""))
+            # 上传 v1 时，若库里已有同篇更高版本（v7），后端会判为 older_version
+            # 并复用库内那条记录 —— 此时详情里的文件名是 v7，属于正常行为。
+            # 因此判据改成「同一 arXiv 编号」，而不是死比文件名。
+            import re as _re
+
+            def _arxiv_key(name: str) -> str:
+                m = _re.search(r"(\d{4}\.\d{4,5})", name or "")
+                return m.group(1) if m else (name or "")
+
+            got_name = detail.get("file_name", "")
+            c.check("文件名与上传文件属于同一篇论文",
+                    _arxiv_key(got_name) == _arxiv_key(pdf.name),
+                    "上传 %s / 库内 %s" % (pdf.name, got_name))
 
         # ---------------- 5. 列表与统计 ----------------
         c.section("5. 列表与统计")
