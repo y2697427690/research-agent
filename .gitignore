@@ -83,3 +83,6 @@ desktop.ini
 notes/
 *-脚本.md
 *逐字稿*.md
+
+# 构建时若目标 docx 被 WPS 占用，脚本会另存为这个文件；属于临时产物
+技术文档-新.docx
