@@ -435,18 +435,41 @@ window.App = window.App || {};
     });
   }
 
+  /**
+   * 删除确认框。
+   *
+   * 让用户选「是否同时删除本地 PDF 文件」：
+   *   勾选   → DELETE ?remove_file=true，磁盘上的 PDF 一起删掉
+   *   不勾选 → 只删数据库记录（分块/引用/译文随之级联删除），
+   *            文件保留在 backend/data/papers/ 下，误删后可重新上传恢复
+   * 无论哪种，重新上传同一份文件都会当成新论文重新解析。
+   */
   function confirmDelete(id) {
     const p = App.data.getPaper(id);
     if (!p) return;
     App.ui.confirm({
       title: '删除论文',
       body: App.ui.Out(h`<div>确定要从文库中删除 <b>${p.title}</b> 吗？</div>
-              <div class="muted small mt-8">该操作会同时删除已生成的向量索引与引用关系（演示环境可随时重新上传恢复）。</div>`),
+              <div class="muted small mt-8">
+                会一并删除该论文的分块、引用关系与译文；检索索引会在下次检索时自动重建。
+              </div>
+              <label class="row gap-8 mt-12" style="align-items:flex-start;cursor:pointer">
+                <input type="checkbox" id="del-file" class="mt-4" />
+                <span>
+                  同时删除本地 PDF 文件
+                  <span class="muted tiny" style="display:block">
+                    不勾选则只删记录，文件保留在服务器上，误删后可重新上传恢复
+                  </span>
+                </span>
+              </label>`),
       okText: '删除', danger: true,
     }).then((ok) => {
       if (!ok) return;
-      App.store.actions.deletePaper(id);
-      App.ui.toast('已删除《' + U.clip(p.title, 18) + '》', 'ok');
+      const box = U.$('#del-file');
+      const removeFile = !!(box && box.checked);
+      App.store.actions.deletePaper(id, removeFile);
+      App.ui.toast('已删除《' + U.clip(p.title, 18) + '》'
+        + (removeFile ? '（含本地文件）' : ''), 'ok');
     });
   }
 

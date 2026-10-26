@@ -404,8 +404,11 @@ window.App = window.App || {};
      * 删除论文。
      * 先改本地状态让界面立刻响应，再调用后端；失败则把论文放回原位并提示。
      * 这种「乐观更新」比等网络往返再刷新体验好得多（本地约 1ms vs 网络 50~200ms）。
+     *
+     * removeFile=false 时后端只删数据库记录（分块/引用/译文级联删除），
+     * 服务器上的 PDF 保留，误删后可重新上传恢复；true 则连文件一起删。
      */
-    async deletePaper(id) {
+    async deletePaper(id, removeFile) {
       const index = state.papers.findIndex((p) => p.id === id);
       if (index === -1) return;
 
@@ -420,7 +423,7 @@ window.App = window.App || {};
       if (!hasApi()) return;
 
       try {
-        await App.api.deletePaper(id, false);
+        await App.api.deletePaper(id, !!removeFile);
         App.ui.toast('已从文库移除', 'ok');
       } catch (err) {
         // 回滚：把论文放回原来的位置，恢复阅读目标

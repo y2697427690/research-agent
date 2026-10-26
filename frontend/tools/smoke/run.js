@@ -1110,6 +1110,25 @@ t('状态：删除论文会同时清理当前阅读目标', () => {
   if (App.store.state.papers.some((p) => p.id === 'p-dpo')) throw new Error('未删除');
   restore();
 });
+t('状态：删除时是否删本地文件由参数透传给接口', async () => {
+  restore();
+  // 用假接口记录调用参数，验证 remove_file 真的传下去了
+  const calls = [];
+  const realDelete = App.api.deletePaper;
+  App.api.deletePaper = (id, removeFile) => { calls.push([id, removeFile]); return Promise.resolve({ ok: true }); };
+  try {
+    await App.store.actions.deletePaper('p-dpo', true);
+    await App.store.actions.deletePaper('p-cc', false);
+    await App.store.actions.deletePaper('p-ot');
+  } finally {
+    App.api.deletePaper = realDelete;
+    restore();
+  }
+  if (calls.length !== 3) throw new Error('应调用 3 次，实际 ' + calls.length);
+  if (calls[0][1] !== true) throw new Error('删除文件参数未透传（期望 true）');
+  if (calls[1][1] !== false) throw new Error('不删文件时应传 false');
+  if (calls[2][1] !== false) throw new Error('未传参时应默认为 false');
+});
 t('状态：订阅通知次数正确，并可取消订阅', () => {
   restore();
   let n = 0;
