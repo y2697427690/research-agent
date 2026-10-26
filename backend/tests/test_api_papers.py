@@ -129,6 +129,33 @@ def test_upload_rejects_empty_file(client):
     assert "空文件" in body["results"][0]["error"]
 
 
+def test_upload_rejects_non_pdf(client):
+    """非 PDF 内容必须在上传阶段拒绝。
+
+    不加文件头校验时，.txt / .docx 也能「上传成功」入库，
+    直到解析阶段才失败，用户看到的错误信息毫无意义。
+    """
+    body = _upload(client, [("fake.pdf", b"hello, not a pdf")]).json()
+    assert body["accepted"] == 0
+    assert body["failed"] == 1
+    assert "%PDF-" in body["results"][0]["error"]
+    # 库里不应留下记录
+    assert client.get("/api/v1/papers?page=1&page_size=10").json()["total"] == 0
+
+
+def test_validation_error_is_422_not_500(client):
+    """参数校验失败要返回 422 且响应可序列化。
+
+    线上曾出现「ctx 里带 ValueError 对象 → ORJSONResponse 序列化失败 → 500」，
+    一个本该是 422 的请求看起来像服务器崩了。
+    """
+    r = client.post("/api/v1/search", json={"query": "x", "top_k": "not-a-number"})
+    assert r.status_code == 422, r.text[:300]
+    body = r.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert isinstance(body["error"]["detail"]["errors"], list)
+
+
 # ---------------------------------------------------------------- 查询
 
 

@@ -34,7 +34,6 @@ window.App = window.App || {};
             </div>
             <div class="row gap-8 mt-16" style="justify-content:center">
               <button class="btn btn-primary" data-action="pick-files">选择 PDF 文件</button>
-              <button class="btn btn-ghost" id="demo-upload">一键演示：上传 v7 → 再上传 v1</button>
             </div>
             <input type="file" id="fileinput" multiple accept="application/pdf" class="hidden" />
           </div>
@@ -92,7 +91,6 @@ window.App = window.App || {};
   function bindUpload() {
     const input = U.$('#fileinput');
     const dz = U.$('#drop');
-    const demo = U.$('#demo-upload');
     // 视图可能已被切走（元素不在 DOM 中），此时无需绑定
     if (!dz || !input) return;
 
@@ -119,14 +117,11 @@ window.App = window.App || {};
       App.store.actions.addUploads(files);
     });
 
-    // 一键演示：模拟需求第 2 节第 1 条的场景（先 v7，再 v1）
-    if (demo) demo.addEventListener('click', async () => {
-      App.ui.toast('演示开始：先上传 Attention v7（新论文）', 'ok');
-      App.store.actions.addUploads([{ name: '1706.03762v7.pdf', size: 2215244 }]);
-      await U.sleep(2600);
-      App.ui.toast('接着上传 1706.03762v1.pdf（应被判定为重复）', 'warn');
-      App.store.actions.addUploads([{ name: '1706.03762v1.pdf', size: 2128686 }]);
-    });
+    // 原先这里有个「一键演示：上传 v7 → 再上传 v1」按钮，
+    // 它传的是 { name, size } 这种假对象，不是真文件 ——
+    // FormData 会把它变成字符串 "[object Object]" 发出去，后端解析失败。
+    // 这类「假上传」和本项目「不装假」的原则冲突，直接删掉：
+    // 演示时选中真实的 PDF 文件上传即可。
   }
 
   /** 由外部（顶栏按钮 / 主页快捷入口）触发文件选择 */

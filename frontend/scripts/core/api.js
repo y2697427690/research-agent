@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    api.js — 与后端通信的唯一出口
    ----------------------------------------------------------------------------
    为什么单独抽一层：
@@ -157,8 +157,21 @@ window.App = window.App || {};
      *   { error: {...} }                     该文件失败
      */
     uploadPapers(fileList) {
+      const files = Array.prototype.slice.call(fileList || []);
+      if (!files.length) throw new Error('没有选择文件');
+      // 只接受真正的 File/Blob。
+      // 踩过的坑：「一键演示」按钮传的是 {name, size} 这种普通对象，
+      // FormData.append 会把它转成字符串 "[object Object]" 发给后端，
+      // 后端解析 multipart 失败 → 422（而当时异常处理器又崩了，最终是 500）。
+      // 这里提前拦下并给出明确提示，比让服务器兜底更容易排查。
+      files.forEach((f) => {
+        const isBlob = f && (typeof f.slice === 'function' || typeof f.arrayBuffer === 'function');
+        if (!isBlob) {
+          throw new Error('上传参数不是文件对象：' + (f && f.name ? f.name : String(f)));
+        }
+      });
       const fd = new FormData();
-      Array.prototype.forEach.call(fileList, (f) => fd.append('files', f));
+      files.forEach((f) => fd.append('files', f));
       // 注意：不要手动设置 Content-Type，浏览器需要自己加 boundary
       return request('/papers/upload', { method: 'POST', body: fd });
     },

@@ -103,6 +103,11 @@ async def upload_papers(
                 )
             if not data:
                 raise InvalidRequest(f"{name} 是空文件")
+            # 校验文件头：真正的 PDF 一定以 %PDF- 开头。
+            # 不加这一步的话，用户拖进一个 .txt / .docx 也能"上传成功"入库，
+            # 直到解析阶段才失败，届时错误信息对用户毫无意义。
+            if not data.startswith(b"%PDF-"):
+                raise InvalidRequest(f"{name} 不是 PDF 文件（缺少 %PDF- 文件头）")
 
             uploaded, verdict = await paper_service.detect_new_paper(
                 db, file_name=name, data=data

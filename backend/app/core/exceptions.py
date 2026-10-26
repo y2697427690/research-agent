@@ -83,12 +83,33 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> ORJSONResponse:
         """请求参数校验失败。
 
-        exc.errors() 会指出具体是哪个字段不对，原样返回给前端便于排查。
+        exc.errors() 会指出具体是哪个字段不对，返回给前端便于排查。
+
+        为什么要先 sanitize：Pydantic v2 的 errors() 里 ctx 可能带原始异常对象
+        （例如自定义校验器抛的 ValueError）。直接塞进 ORJSONResponse 会抛
+        "Type is not JSON serializable: ValueError"，最终变成 500 ——
+        本该是 422 的请求反而看起来像服务器崩了。线上就踩到过：
+        演示按钮把 {name,size} 这种假文件塞进 FormData，后端校验失败后 500。
         """
+        safe_errors = []
+        for err in exc.errors():
+            item = {
+                "type": str(err.get("type", "")),
+                "loc": [str(x) for x in (err.get("loc") or [])],
+                "msg": str(err.get("msg", "")),
+            }
+            ctx = err.get("ctx")
+            if ctx:
+                item["ctx"] = {str(k): str(v) for k, v in dict(ctx).items()}
+            if "input" in err:
+                raw = err.get("input")
+                item["input"] = raw if isinstance(raw, (str, int, float, bool, type(None))) else repr(raw)[:200]
+            safe_errors.append(item)
+
         return ORJSONResponse(
             status_code=422,
             content=error_body("VALIDATION_ERROR", "请求参数不合法",
-                               {"errors": exc.errors()}),
+                               {"errors": safe_errors}),
         )
 
     @app.exception_handler(StarletteHTTPException)
