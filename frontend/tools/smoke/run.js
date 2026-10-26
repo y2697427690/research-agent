@@ -583,6 +583,23 @@ t('阅读器：翻译中显示「停止翻译」，停止后进度保留且可�
     throw new Error('停止后不应再出现停止按钮');
   }
 });
+t('文库：点删除会弹出确认框，且含「同时删除本地 PDF 文件」选项', () => {
+  restore();
+  renderView('library');
+  // 清掉上一条用例可能残留的弹窗
+  documentStub.body.innerHTML = '';
+  App.views.library.confirmDelete('p-attention-v7');
+  const modal = documentStub.body.querySelector('.modal');
+  if (!modal) throw new Error('点删除后没有弹出确认框（这就是「没反应」）');
+  const txt = modal.innerHTML || '';
+  if (txt.indexOf('删除论文') === -1) throw new Error('确认框标题不对：' + txt.slice(0, 80));
+  // 勾选框必须存在：它是「是否同时删文件」的唯一入口
+  // （不断言文案：测试用的极简 DOM 会丢掉 input 后的纯文本节点）
+  if (!modal.querySelector('#del-file')) throw new Error('缺少勾选框 #del-file');
+  if (txt.indexOf('演示环境') !== -1) throw new Error('确认框仍在提「演示环境」');
+  // 清理弹窗，避免影响后续用例（confirm 返回的 Promise 不会 resolve）
+  documentStub.body.innerHTML = '';
+});
 t('阅读器：公式块保留 LaTeX 原文（对应需求「公式不翻译」）', () => {
   restore();
   App.store.actions.openPaper('p-attention-v7');

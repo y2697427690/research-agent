@@ -132,6 +132,13 @@ window.App = window.App || {};
     U.delegate(shellEls.view, 'click', '[data-action]', (e, el) => {
       handleAction(el.dataset.action, el.dataset, el);
     });
+    // 抽屉（元数据 / 解析详情）是 appendChild 到 document.body 的，
+    // 不在 shellEls.view 范围内，上面的委托覆盖不到 ——
+    // 于是抽屉里的「删除该论文」「✕」「取消」点了没反应（用户反馈的"点删除没反应"）。
+    // 这里单独补一条委托，选择器限定 .drawer 内部，不会与视图按钮重复触发。
+    U.delegate(document.body, 'click', '.drawer [data-action]', (e, el) => {
+      handleAction(el.dataset.action, el.dataset, el);
+    });
     U.delegate(shellEls.view, 'input', '[data-bind]', (e, el) => {
       App.store.actions.setIdea ? null : null;
       if (el.dataset.bind === 'idea') App.store.actions.setIdea(el.value);

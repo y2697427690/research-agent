@@ -443,30 +443,49 @@ window.App = window.App || {};
    *   不勾选 → 只删数据库记录（分块/引用/译文随之级联删除），
    *            文件保留在 backend/data/papers/ 下，误删后可重新上传恢复
    * 无论哪种，重新上传同一份文件都会当成新论文重新解析。
+   *
+   * 为什么不用 App.ui.confirm：它在 resolve(true) 之前就把弹窗从 DOM 移除了，
+   * 回调里再去读 #del-file 只能拿到 null —— 勾选框永远不生效。
+   * 这里用 openModal 自己控制生命周期：先读勾选状态，再关闭。
    */
   function confirmDelete(id) {
     const p = App.data.getPaper(id);
     if (!p) return;
-    App.ui.confirm({
-      title: '删除论文',
-      body: App.ui.Out(h`<div>确定要从文库中删除 <b>${p.title}</b> 吗？</div>
-              <div class="muted small mt-8">
-                会一并删除该论文的分块、引用关系与译文；检索索引会在下次检索时自动重建。
-              </div>
-              <label class="row gap-8 mt-12" style="align-items:flex-start;cursor:pointer">
-                <input type="checkbox" id="del-file" class="mt-4" />
-                <span>
-                  同时删除本地 PDF 文件
-                  <span class="muted tiny" style="display:block">
-                    不勾选则只删记录，文件保留在服务器上，误删后可重新上传恢复
-                  </span>
-                </span>
-              </label>`),
-      okText: '删除', danger: true,
-    }).then((ok) => {
-      if (!ok) return;
-      const box = U.$('#del-file');
+
+    const ui = App.ui.openModal(h`
+      <div class="modal">
+        <div class="modal-head">
+          <div class="modal-title">删除论文</div>
+          <div class="spacer"></div>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body">
+          <div>确定要从文库中删除 <b>${p.title}</b> 吗？</div>
+          <div class="muted small mt-8">
+            会一并删除该论文的分块、引用关系与译文；检索索引会在下次检索时自动重建。
+          </div>
+          <label class="row gap-8 mt-12" style="align-items:flex-start;cursor:pointer">
+            <input type="checkbox" id="del-file" class="mt-4" />
+            <span>
+              同时删除本地 PDF 文件
+              <span class="muted tiny" style="display:block">
+                不勾选则只删记录，文件保留在服务器上，误删后可重新上传恢复
+              </span>
+            </span>
+          </label>
+        </div>
+        <div class="modal-foot">
+          <div class="spacer"></div>
+          <button class="btn btn-ghost" data-close>取消</button>
+          <button class="btn btn-danger" data-do-delete>删除</button>
+        </div>
+      </div>`);
+
+    U.$('[data-do-delete]', ui.mask).addEventListener('click', () => {
+      // 关键顺序：先读勾选，再关闭弹窗
+      const box = U.$('#del-file', ui.mask);
       const removeFile = !!(box && box.checked);
+      ui.close();
       App.store.actions.deletePaper(id, removeFile);
       App.ui.toast('已删除《' + U.clip(p.title, 18) + '》'
         + (removeFile ? '（含本地文件）' : ''), 'ok');
