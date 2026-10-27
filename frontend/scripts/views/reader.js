@@ -98,6 +98,61 @@ window.App = window.App || {};
 
     if (doc) bindReader(el, doc, paper);
     bindSelection(el);
+    // 从问答页「跳转原文」过来时，定位到对应段落并高亮
+    applyFocusEvidence(el, doc, st);
+  }
+
+  /**
+   * 应用「跳转到原文」的定位请求。
+   *
+   * 背景：问答页的引用卡片有个「跳转原文」按钮，原来只是打开整篇论文，
+   * 用户还得自己在正文里翻——反馈"跳过去不知道看哪儿"。
+   * 现在带着片段文本前缀过来，在正文里按文本匹配定位，滚动 + 高亮 + 提示页码。
+   *
+   * 匹配用「去空白后的前 40 字」：正文块和片段来自同一批分块，
+   * 文字一致，只是换行/空格可能不同。
+   */
+  function applyFocusEvidence(el, doc, st) {
+    const focus = st.reader.focusEvidence;
+    if (!focus) return;
+    if (!doc) return;          // 正文还在异步加载，等下一次渲染再试
+
+    const key = String(focus.text || '').replace(/\s+/g, '').slice(0, 40);
+    if (!key) {
+      App.store.actions.clearFocusEvidence();
+      return;
+    }
+
+    const blocks = el.querySelectorAll('.doc-p, .doc-list, .doc-h1, .doc-h2, .doc-h3');
+    let hit = null;
+    for (let i = 0; i < blocks.length; i += 1) {
+      const txt = String(blocks[i].textContent || '').replace(/\s+/g, '');
+      if (txt.indexOf(key) !== -1) { hit = blocks[i]; break; }
+    }
+    // 文本没匹配上（分块边界或换行差异）时退回按页码定位：
+    // 至少把用户带到该页的第一个段落，比打开整篇让人自己翻强。
+    if (!hit && focus.page) {
+      hit = el.querySelector('.doc-p[data-page="' + focus.page + '"]')
+        || el.querySelector('[data-page="' + focus.page + '"]');
+    }
+
+    if (!hit) {
+      App.ui.toast('已打开论文，但没在正文里定位到该段（可能该段未渲染）', 'warn', 3200);
+      App.store.actions.clearFocusEvidence();
+      return;
+    }
+
+    hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    hit.classList.remove('blk-flash');
+    void hit.offsetWidth;
+    hit.classList.add('blk-flash');
+    setTimeout(() => hit.classList.remove('blk-flash'), 2600);
+
+    const page = focus.page ? '第 ' + focus.page + ' 页' : '';
+    const sec = focus.section && focus.section !== '正文' ? focus.section : '';
+    App.ui.toast('已定位到原文' + (page || sec ? '：' + [page, sec].filter(Boolean).join(' · ') : ''),
+      'ok', 2400);
+    App.store.actions.clearFocusEvidence();
   }
 
   /**
@@ -296,13 +351,13 @@ window.App = window.App || {};
     const cites = citeSpans(b, lang);
 
     switch (b.type) {
-      case 'h1': return App.ui.Out(h`<h1 class="doc-h1" id="${b.id}-${lang}">${text}<span class="anchor-flag">§</span></h1>`);
-      case 'h2': return App.ui.Out(h`<h2 class="doc-h2" id="${b.id}-${lang}">${text}</h2>`);
-      case 'h3': return App.ui.Out(h`<h3 class="doc-h3" id="${b.id}-${lang}">${text}</h3>`);
+      case 'h1': return App.ui.Out(h`<h1 class="doc-h1" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}<span class="anchor-flag">§</span></h1>`);
+      case 'h2': return App.ui.Out(h`<h2 class="doc-h2" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}</h2>`);
+      case 'h3': return App.ui.Out(h`<h3 class="doc-h3" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}</h3>`);
       case 'p':
-        return App.ui.Out(h`<p class="doc-p" id="${b.id}-${lang}">${U.raw(U.esc(text).replace(/\n/g, '<br/>'))}${U.raw(cites)}</p>`);
+        return App.ui.Out(h`<p class="doc-p" data-page="${b.page || 1}" id="${b.id}-${lang}">${U.raw(U.esc(text).replace(/\n/g, '<br/>'))}${U.raw(cites)}</p>`);
       case 'list':
-        return App.ui.Out(h`<div class="doc-list" id="${b.id}-${lang}">${U.raw(U.esc(text).split('\n').map((l) =>
+        return App.ui.Out(h`<div class="doc-list" data-page="${b.page || 1}" id="${b.id}-${lang}">${U.raw(U.esc(text).split('\n').map((l) =>
           h`<div class="doc-li">${l.replace(/^•\s*/, '')}</div>`).join(''))}</div>`);
       case 'formula':
         return App.ui.Out(h`
@@ -564,5 +619,10 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.reader = { render, toolbar, scrollToAnchor, scrollToRef, gotoPublication, translateSelection, copy };
+  // applyFocusEvidence 额外导出，便于冒烟测试直接验证「定位到段落」的逻辑
+  // （测试用的极简 DOM 会丢掉段落纯文本，走整页渲染没法稳定断言）
+  App.views.reader = {
+    render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
+    translateSelection, copy, applyFocusEvidence,
+  };
 })(window.App);

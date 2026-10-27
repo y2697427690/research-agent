@@ -160,6 +160,15 @@ window.App = window.App || {};
       /* ---- 全局 ---- */
       case 'go': S.go(data.route, data); break;
       case 'open-paper': S.openPaper(data.id); break;
+      // 引用卡片里的「跳转原文」：打开论文并定位到该片段
+      case 'open-evidence':
+        S.openPaper(data.id);
+        S.focusEvidence({
+          text: data.text || '',
+          page: parseInt(data.page, 10) || 0,
+          section: data.section || '',
+        });
+        break;
 
       /* ---- 文库：上传 / 去重 ---- */
       case 'pick-files': App.views.library.pickFiles(); break;

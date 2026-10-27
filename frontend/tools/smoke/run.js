@@ -1,4 +1,4 @@
-/* 无浏览器的冒烟测试：加载全部脚本、渲染每个视图、执行关键交互，捕获运行时错误。
+﻿/* 无浏览器的冒烟测试：加载全部脚本、渲染每个视图、执行关键交互，捕获运行时错误。
    自带一个极简 HTML 解析器作为 querySelector 的桩，用来发现「找不到元素」类真实缺陷。 */
 const fs = require('fs');
 const path = require('path');
@@ -571,6 +571,51 @@ t('问答：多条回答都有 [3] 时，点击只高亮当前那条消息里的
   if ((cards[0].className || '').indexOf('flash') !== -1) throw new Error('第一条卡片被误高亮');
 });
 
+t('问答→原文：跳转原文按钮带上片段文本，供阅读器定位', () => {
+  restore();
+  const chat = App.store.actions.newChat ? App.store.actions.newChat() : App.store.state.chats[0];
+  chat.messages.push({ role: 'user', text: '测试', evidence: [], snippets: [] });
+  chat.messages.push({
+    role: 'assistant', text: '结论 [1]。', streaming: false,
+    evidence: [{
+      index: 1, paperId: 'p-attention-v7', section: '3.1 Encoder', page: 3,
+      text: 'We trained our models on one machine with 8 NVIDIA P100 GPUs.',
+      relevance: 1,
+    }],
+    snippets: [{}],
+  });
+  App.store.state.activeChatId = chat.id;
+  App.store.notify('chats');
+  renderView('qa');
+  const btn = el.querySelector('[data-action="open-evidence"]');
+  if (!btn) throw new Error('引用卡片缺少「跳转原文」按钮');
+  if (!btn.dataset.text || btn.dataset.text.indexOf('P100') === -1) {
+    throw new Error('按钮没有带上片段文本，阅读器无法定位：' + (btn.dataset.text || ''));
+  }
+  if (btn.dataset.page !== '3') throw new Error('按钮没有带上页码，实际 ' + btn.dataset.page);
+});
+
+
+t('阅读器：跳转原文会定位到对应段落并高亮', () => {
+  restore();
+  // 直接在构造好的容器上验证定位逻辑：
+  // 文本匹配在本测试 DOM 里不可靠（会丢掉段落纯文本），故走「按页码兜底」这条路径
+  const box = documentStub.createElement('div');
+  box.innerHTML = '<p class="doc-p" data-page="1">first page paragraph</p>'
+    + '<p class="doc-p" data-page="3">target paragraph on page three</p>';
+  box.querySelectorAll('.doc-p').forEach((p) => { p.scrollIntoView = () => {}; });
+
+  App.store.state.reader.focusEvidence = { text: '不存在的文本', page: 3, section: '3.1' };
+  App.views.reader.applyFocusEvidence(box, {}, App.store.state);
+
+  const hit = box.querySelector('.blk-flash');
+  if (!hit) throw new Error('没有定位到第 3 页的段落');
+  // 测试 DOM 的 getAttribute 是空实现，这里读 dataset
+  if (String(hit.dataset.page) !== '3') {
+    throw new Error('定位到了错误的段落：data-page=' + hit.dataset.page);
+  }
+  if (App.store.state.reader.focusEvidence) throw new Error('定位后未清除 focusEvidence');
+});
 t('写作：四个标签页都能渲染且各有核心元素', () => {
   const expects = { outline: '#idea', diagram: '#diagram-code', viz: '#pick-csv', translate: '#zh-src' };
   Object.keys(expects).forEach((tab) => {

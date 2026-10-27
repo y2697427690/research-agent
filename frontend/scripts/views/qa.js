@@ -316,7 +316,12 @@ window.App = window.App || {};
         <div class="evi-text mt-8">${e.text}</div>
         ${e.note ? U.raw(h`<div class="muted tiny mt-8">${e.note}</div>`) : ''}
         <div class="row gap-4 mt-8">
-          <button class="btn btn-sm btn-ghost" data-action="open-paper" data-id="${e.paperId}">跳转原文</button>
+          <button class="btn btn-sm btn-ghost"
+            data-action="open-evidence"
+            data-id="${e.paperId}"
+            data-page="${e.page || 1}"
+            data-section="${U.esc(e.section || '')}"
+            data-text="${U.esc(String(e.text || '').slice(0, 80))}">跳转原文</button>
         </div>
       </div>`).join(''));
   }

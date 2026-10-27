@@ -998,3 +998,19 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
 .cmp-after { color: var(--text-0); font-weight: 600; }
 
 /* 差异条目样式在弹窗改版后仍被其它地方复用（如解析详情），保留 */
+/* 「跳转原文」定位到正文段落后的高亮：
+   整段变浅蓝底 + 左侧 4px 蓝条 + 两秒光环，比只改边框更容易在长文里认出来 */
+.blk-flash {
+  background: var(--brand-soft) !important;
+  box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 4px rgba(47, 111, 237, 0.18);
+  border-radius: 4px;
+  animation: blk-flash-ring 0.9s ease-out 2;
+}
+@keyframes blk-flash-ring {
+  0% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 0 rgba(47, 111, 237, 0.55); }
+  70% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 14px rgba(47, 111, 237, 0); }
+  100% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 4px rgba(47, 111, 237, 0.18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blk-flash { animation: none; }
+}

@@ -491,6 +491,25 @@ window.App = window.App || {};
      * 切到需要译文的模式（双语/纯译文）时，若当前是真实论文且还没译文，
      * 自动按批触发翻译。演示论文自带译文，不会走到这里。
      */
+    /**
+     * 记录一次「跳转到原文」的定位请求。
+     *
+     * 问答页只负责把「片段文本前缀 + 页码 + 小节」塞进状态，
+     * 真正的滚动与高亮由阅读器在渲染完成后执行（见 reader.applyFocusEvidence）。
+     * 这样即使正文是异步加载的（首次进入需要拉 chunks），
+     * 也能在加载完成后的下一次渲染里完成定位。
+     */
+    focusEvidence(payload) {
+      state.reader.focusEvidence = payload || null;
+      notify('reader');
+    },
+
+    clearFocusEvidence() {
+      if (!state.reader.focusEvidence) return;
+      state.reader.focusEvidence = null;
+      notify('reader');
+    },
+
     async setReaderMode(mode) {
       state.reader.mode = mode;
       notify('reader');
