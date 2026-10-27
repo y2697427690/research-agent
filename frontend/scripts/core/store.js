@@ -504,10 +504,18 @@ window.App = window.App || {};
       notify('reader');
     },
 
-    clearFocusEvidence() {
+    /**
+     * 清除定位请求。
+     *
+     * silent=true 用于「已经完成定位、只是把请求标记消费掉」的场景：
+     * 此时如果 notify('reader')，阅读器会重绘并重建整篇正文的 DOM，
+     * 刚加上的高亮类名和滚动位置会一起消失 —— 表现就是
+     * 「toast 出来了，但页面没有高亮」（真实反馈过）。
+     */
+    clearFocusEvidence(silent) {
       if (!state.reader.focusEvidence) return;
       state.reader.focusEvidence = null;
-      notify('reader');
+      if (!silent) notify('reader');
     },
 
     async setReaderMode(mode) {

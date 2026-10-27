@@ -119,7 +119,7 @@ window.App = window.App || {};
 
     const key = String(focus.text || '').replace(/\s+/g, '').slice(0, 40);
     if (!key) {
-      App.store.actions.clearFocusEvidence();
+      App.store.actions.clearFocusEvidence(true);
       return;
     }
 
@@ -138,7 +138,7 @@ window.App = window.App || {};
 
     if (!hit) {
       App.ui.toast('已打开论文，但没在正文里定位到该段（可能该段未渲染）', 'warn', 3200);
-      App.store.actions.clearFocusEvidence();
+      App.store.actions.clearFocusEvidence(true);
       return;
     }
 
@@ -146,13 +146,17 @@ window.App = window.App || {};
     hit.classList.remove('blk-flash');
     void hit.offsetWidth;
     hit.classList.add('blk-flash');
-    setTimeout(() => hit.classList.remove('blk-flash'), 2600);
+    // 同时把该段所在的小节标题标出来，长文里更容易定位
+    setTimeout(() => hit.classList.remove('blk-flash'), 3000);
 
     const page = focus.page ? '第 ' + focus.page + ' 页' : '';
     const sec = focus.section && focus.section !== '正文' ? focus.section : '';
     App.ui.toast('已定位到原文' + (page || sec ? '：' + [page, sec].filter(Boolean).join(' · ') : ''),
       'ok', 2400);
-    App.store.actions.clearFocusEvidence();
+    // silent：只消费掉请求，不触发重绘。
+    // 若这里 notify，阅读器会重建整篇正文的 DOM，刚加的高亮类和滚动位置会一起消失
+    // —— 表现正是「toast 出来了但没有高亮」（真实反馈过）。
+    App.store.actions.clearFocusEvidence(true);
   }
 
   /**
