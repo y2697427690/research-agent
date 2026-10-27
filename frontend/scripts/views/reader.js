@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views/reader.js — 阅读器（结构化阅读 / 翻译 / 中英对比）
    ----------------------------------------------------------------------------
    对应需求 1.3「阅读和翻译」：
@@ -147,7 +147,7 @@ window.App = window.App || {};
     void hit.offsetWidth;
     hit.classList.add('blk-flash');
     // 同时把该段所在的小节标题标出来，长文里更容易定位
-    setTimeout(() => hit.classList.remove('blk-flash'), 3000);
+    setTimeout(() => hit.classList.remove('blk-flash'), 1800);
 
     const page = focus.page ? '第 ' + focus.page + ' 页' : '';
     const sec = focus.section && focus.section !== '正文' ? focus.section : '';

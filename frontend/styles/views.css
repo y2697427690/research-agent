@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views.css — 各业务视图专属样式
    ----------------------------------------------------------------------------
    顺序与侧边栏一致：
@@ -489,23 +489,21 @@
   transition: all .3s var(--ease);
 }
 /* 点击角标后的定位高亮：
-   长回答里滚过去只有一圈描边不够显眼，这里叠三层提示 ——
-   左侧色条 + 底色 + 两秒的呼吸光环，用户一眼能认出"就是这张"。
+   长回答里滚过去只有一圈描边不够显眼，但也不能太抢眼 ——
+   所以用「细边框 + 极浅底色 + 一次短光环」，1.2 秒内讲清楚"就是这张"。
    scroll-margin-top 给粘性顶栏留出空间，避免卡片被顶栏压住。 */
 .evi-item { scroll-margin-top: 88px; }
 .evi-item.flash {
-  border-color: var(--brand-500);
-  border-width: 2px;
-  background: var(--brand-soft);
-  box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.22);
-  animation: evi-flash 0.8s ease-out 2;
+  border-color: rgba(47, 111, 237, 0.45);
+  background: var(--brand-soft-2);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.10);
+  animation: evi-flash 0.5s ease-out 1;
 }
-.evi-item.flash .evi-text { border-left-color: var(--brand-500); }
-.evi-item.flash .cite { background: var(--brand-500); color: #fff; }
+.evi-item.flash .evi-text { border-left-color: rgba(47, 111, 237, 0.55); }
+.evi-item.flash .cite { background: var(--brand-soft-2); color: var(--brand-500); }
 @keyframes evi-flash {
-  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.6); }
-  70% { box-shadow: 0 0 0 12px rgba(47, 111, 237, 0); }
-  100% { box-shadow: 0 0 0 4px rgba(47, 111, 237, 0.22); }
+  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.28); }
+  100% { box-shadow: 0 0 0 6px rgba(47, 111, 237, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .evi-item.flash { animation: none; }
@@ -999,18 +997,18 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
 
 /* 差异条目样式在弹窗改版后仍被其它地方复用（如解析详情），保留 */
 /* 「跳转原文」定位到正文段落后的高亮：
-   整段变浅蓝底 + 左侧 4px 蓝条 + 两秒光环，比只改边框更容易在长文里认出来 */
+   极浅底色 + 3px 左侧蓝条 + 一次短光环，1.8 秒内让人认出位置，
+   又不至于整段刺眼（和问答页引用卡片保持同一套观感） */
 .blk-flash {
   scroll-margin-top: 96px;
-  background: var(--brand-soft) !important;
-  box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 4px rgba(47, 111, 237, 0.18);
+  background: var(--brand-soft-2) !important;
+  box-shadow: inset 3px 0 0 rgba(47, 111, 237, 0.6), 0 0 0 3px rgba(47, 111, 237, 0.08);
   border-radius: 4px;
-  animation: blk-flash-ring 0.9s ease-out 2;
+  animation: blk-flash-ring 0.6s ease-out 1;
 }
 @keyframes blk-flash-ring {
-  0% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 0 rgba(47, 111, 237, 0.55); }
-  70% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 14px rgba(47, 111, 237, 0); }
-  100% { box-shadow: inset 4px 0 0 var(--brand-500), 0 0 0 4px rgba(47, 111, 237, 0.18); }
+  0% { box-shadow: inset 3px 0 0 rgba(47, 111, 237, 0.6), 0 0 0 0 rgba(47, 111, 237, 0.26); }
+  100% { box-shadow: inset 3px 0 0 rgba(47, 111, 237, 0.6), 0 0 0 8px rgba(47, 111, 237, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .blk-flash { animation: none; }

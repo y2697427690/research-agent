@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views/qa.js — 知识问答（单篇 / 多篇论文，答案必带出处）
    ----------------------------------------------------------------------------
    对应需求 1.2「知识问答」：
@@ -354,7 +354,7 @@ window.App = window.App || {};
     target.classList.remove('flash');
     void target.offsetWidth;
     target.classList.add('flash');
-    setTimeout(() => target.classList.remove('flash'), 2200);
+    setTimeout(() => target.classList.remove('flash'), 1200);
     App.ui.toast('已定位到引用 [' + n + '] 的原文片段', 'ok', 1600);
   }
 
