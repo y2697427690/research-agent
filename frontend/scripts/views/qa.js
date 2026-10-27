@@ -321,19 +321,27 @@ window.App = window.App || {};
       </div>`).join(''));
   }
 
-  /** 点击角标：滚动到对应证据并高亮 */
+  /**
+   * 点击角标：滚动到对应原文片段并高亮。
+   *
+   * 之前只找 #evi-card-N（那是「检索到但未引用」列表的 id），
+   * 而真实引用卡片的 id 是 #evi-N —— 于是滚动永远不触发，只闪一下，
+   * 用户得自己在长回答里翻，反馈「跳转后不容易找」。
+   * 现在两个 id 都认，滚动后停 2 秒高亮，并给一条 toast 确认定位到了第几段。
+   */
   function jumpEvidence(n) {
-    const card = U.$('#evi-card-' + n);
-    if (card) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      card.classList.add('flash');
-      setTimeout(() => card.classList.remove('flash'), 1500);
+    const target = U.$('#evi-' + n) || U.$('#evi-card-' + n);
+    if (!target) {
+      App.ui.toast('回答里没有引用 [' + n + ']，该片段可能已被过滤', 'warn', 2600);
+      return;
     }
-    const inline = U.$('#evi-' + n);
-    if (inline) {
-      inline.classList.add('flash');
-      setTimeout(() => inline.classList.remove('flash'), 1500);
-    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 先移除再添加，保证连续点同一个角标也能重新触发动画
+    target.classList.remove('flash');
+    void target.offsetWidth;
+    target.classList.add('flash');
+    setTimeout(() => target.classList.remove('flash'), 2000);
+    App.ui.toast('已定位到引用 [' + n + '] 的原文片段', 'ok', 1600);
   }
 
   /* ==========================================================================

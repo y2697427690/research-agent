@@ -488,7 +488,24 @@
   margin-bottom: 6px;
   transition: all .3s var(--ease);
 }
-.evi-item.flash { border-color: var(--brand-500); box-shadow: 0 0 0 3px var(--brand-soft); }
+/* 点击角标后的定位高亮：
+   长回答里滚过去只有一圈描边不够显眼，这里叠三层提示 ——
+   左侧色条 + 底色 + 两秒的呼吸光环，用户一眼能认出"就是这张"。 */
+.evi-item.flash {
+  border-color: var(--brand-500);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+  animation: evi-flash 0.9s ease-out 2;
+}
+.evi-item.flash .evi-text { border-left-color: var(--brand-500); }
+@keyframes evi-flash {
+  0% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(47, 111, 237, 0); }
+  100% { box-shadow: 0 0 0 3px var(--brand-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .evi-item.flash { animation: none; }
+}
 .evi-text {
   font-size: 12.5px; line-height: 1.75; color: var(--text-1);
   font-family: var(--font-en);

@@ -509,6 +509,34 @@ t('问答：引用面板编号与回答里的 [n] 一致（不按数组下标重
   if (second.indexOf('[3]') === -1) throw new Error('第二张卡片编号应为 [3]，实际：' + second.slice(0, 60));
   // 锚点 id 也要用原编号，点击 [3] 才能定位到卡片
   mustFind('#evi-3', '第三段的锚点');
+  // 点击角标必须真的能找到目标元素（曾经只找 #evi-card-N，
+  // 而引用卡片是 #evi-N，导致跳转不滚动）
+  const jumpTarget = el.querySelector('#evi-3');
+  if (!jumpTarget) throw new Error('缺少 #evi-3，跳转会找不到目标');
+  const classes = (jumpTarget.className || '');
+  if (classes.indexOf('evi-item') === -1) throw new Error('evi-item 类名缺失');
+});
+
+t('问答：点击角标会滚动并高亮对应片段', () => {
+  restore();
+  const chat = App.store.actions.newChat ? App.store.actions.newChat() : App.store.state.chats[0];
+  chat.messages.push({ role: 'user', text: '测试', evidence: [], snippets: [] });
+  chat.messages.push({
+    role: 'assistant', text: '结论 [3]。', streaming: false,
+    evidence: [{ index: 3, paperId: 'p-attention-v7', section: '正文', page: 2, text: '片段三', relevance: 0.5 }],
+    snippets: [{}],
+  });
+  App.store.state.activeChatId = chat.id;
+  App.store.notify('chats');
+  renderView('qa');
+  const card = el.querySelector('#evi-3');
+  if (!card) throw new Error('未渲染 #evi-3');
+  // 极简 DOM 没有 scrollIntoView，这里补一个探针验证调用链
+  let scrolled = false;
+  card.scrollIntoView = () => { scrolled = true; };
+  App.views.qa.jumpEvidence(3);
+  if (!scrolled) throw new Error('点击角标没有触发滚动');
+  if ((card.className || '').indexOf('flash') === -1) throw new Error('未添加 flash 高亮类');
 });
 
 t('写作：四个标签页都能渲染且各有核心元素', () => {
