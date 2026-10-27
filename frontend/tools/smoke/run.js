@@ -539,6 +539,38 @@ t('问答：点击角标会滚动并高亮对应片段', () => {
   if ((card.className || '').indexOf('flash') === -1) throw new Error('未添加 flash 高亮类');
 });
 
+t('问答：多条回答都有 [3] 时，点击只高亮当前那条消息里的卡片', () => {
+  restore();
+  const chat = App.store.actions.newChat ? App.store.actions.newChat() : App.store.state.chats[0];
+  const mkMsg = (text) => ({
+    role: 'assistant', text: text, streaming: false,
+    evidence: [{ index: 3, paperId: 'p-attention-v7', section: '正文', page: 2, text: text, relevance: 0.5 }],
+    snippets: [{}],
+  });
+  chat.messages.push({ role: 'user', text: '第一次提问', evidence: [], snippets: [] });
+  chat.messages.push(mkMsg('第一次回答 [3]。'));
+  chat.messages.push({ role: 'user', text: '第二次提问', evidence: [], snippets: [] });
+  chat.messages.push(mkMsg('第二次回答 [3]。'));
+  App.store.state.activeChatId = chat.id;
+  App.store.notify('chats');
+  renderView('qa');
+
+  const cards = el.querySelectorAll('#evi-3');
+  if (cards.length !== 2) throw new Error('应有 2 张同编号卡片（每条回答一张），实际 ' + cards.length);
+  // 模拟点击第二条回答的角标
+  let scrolled = null;
+  cards.forEach((c) => { c.scrollIntoView = () => { scrolled = c; }; });
+  const secondMsg = cards[1].closest('.msg-ai');
+  if (!secondMsg) throw new Error('找不到第二条消息容器');
+  App.views.qa.jumpEvidence(3, secondMsg.querySelector('.cite'));
+
+  if (scrolled !== cards[1]) {
+    throw new Error('跳转命中了错误的卡片：应为第二条回答里的那张');
+  }
+  if ((cards[1].className || '').indexOf('flash') === -1) throw new Error('第二条卡片未高亮');
+  if ((cards[0].className || '').indexOf('flash') !== -1) throw new Error('第一条卡片被误高亮');
+});
+
 t('写作：四个标签页都能渲染且各有核心元素', () => {
   const expects = { outline: '#idea', diagram: '#diagram-code', viz: '#pick-csv', translate: '#zh-src' };
   Object.keys(expects).forEach((tab) => {

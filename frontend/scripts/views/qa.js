@@ -324,13 +324,22 @@ window.App = window.App || {};
   /**
    * 点击角标：滚动到对应原文片段并高亮。
    *
-   * 之前只找 #evi-card-N（那是「检索到但未引用」列表的 id），
-   * 而真实引用卡片的 id 是 #evi-N —— 于是滚动永远不触发，只闪一下，
-   * 用户得自己在长回答里翻，反馈「跳转后不容易找」。
-   * 现在两个 id 都认，滚动后停 2 秒高亮，并给一条 toast 确认定位到了第几段。
+   * 两个坑都踩过：
+   * 1. 原来只找 #evi-card-N（「检索到但未引用」列表的 id），
+   *    而真实引用卡片是 #evi-N —— 滚动永远不触发，只闪一下；
+   * 2. 每条助手消息都会渲染 id="evi-1..N"，同一会话问过两次以上，
+   *    这些 id 在页面里就重复了。document.querySelector('#evi-3')
+   *    永远命中第一条消息的卡片，用户点第二条回答的 [3] 会滚到上面去，
+   *    看起来就像"根本没有高亮"。
+   * 所以：优先在「被点击角标所属的那条消息」里找，找不到才退化为全局查找。
    */
-  function jumpEvidence(n) {
-    const target = U.$('#evi-' + n) || U.$('#evi-card-' + n);
+  function jumpEvidence(n, fromEl) {
+    const scope = (fromEl && fromEl.closest && fromEl.closest('.msg-ai')) || null;
+    const pick = (root) => {
+      if (!root) return null;
+      return root.querySelector('#evi-' + n) || root.querySelector('#evi-card-' + n);
+    };
+    const target = pick(scope) || pick(document);
     if (!target) {
       App.ui.toast('回答里没有引用 [' + n + ']，该片段可能已被过滤', 'warn', 2600);
       return;
@@ -340,7 +349,7 @@ window.App = window.App || {};
     target.classList.remove('flash');
     void target.offsetWidth;
     target.classList.add('flash');
-    setTimeout(() => target.classList.remove('flash'), 2000);
+    setTimeout(() => target.classList.remove('flash'), 2200);
     App.ui.toast('已定位到引用 [' + n + '] 的原文片段', 'ok', 1600);
   }
 

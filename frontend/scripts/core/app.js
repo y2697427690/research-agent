@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    app.js — 应用入口：视图注册、路由、外壳渲染
    ----------------------------------------------------------------------------
    渲染流程（单向数据流）：
@@ -208,7 +208,7 @@ window.App = window.App || {};
       case 'qa-new-chat': S.newChat(); break;
       case 'qa-open-chat': App.store.set({ activeChatId: data.id }, 'chats'); break;
       case 'qa-toggle-evidence': S.toggleEvidence(); break;
-      case 'qa-cite': App.views.qa.jumpEvidence(parseInt(data.cite, 10)); break;
+      case 'qa-cite': App.views.qa.jumpEvidence(parseInt(data.cite, 10), el); break;
 
       /* ---- 图谱 ---- */
       case 'graph-select': S.selectNode(data.id); break;
