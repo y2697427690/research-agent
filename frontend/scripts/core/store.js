@@ -737,6 +737,9 @@ window.App = window.App || {};
                 page_start: null,
                 text: c.text,
                 score: 1 / (c.index || 1),
+                // 保留后端编号，面板显示时用它而不是数组下标，
+                // 否则回答里的 [3] 在面板上会变成 [2]
+                index: c.index,
               }))
             );
             answerMsg.invalidMarks = event.invalid_marks || [];

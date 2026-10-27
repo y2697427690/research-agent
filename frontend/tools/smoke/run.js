@@ -481,6 +481,36 @@ t('问答：多篇模式换成 3 道对比例题', () => {
   mustText('承袭关系');
 });
 
+t('问答：引用面板编号与回答里的 [n] 一致（不按数组下标重编号）', () => {
+  restore();
+  // 构造一个「回答只引用第 1、3 段」的场景：
+  // 若面板按数组下标编号，会显示成 [1][2]，与回答的 [1][3] 对不上。
+  const chat = App.store.actions.newChat ? App.store.actions.newChat() : null;
+  const target = chat || App.store.state.chats[0];
+  target.messages.push({ role: 'user', text: '测试问题', evidence: [], snippets: [] });
+  target.messages.push({
+    role: 'assistant',
+    text: '结论一 [1]，结论二 [3]。',
+    streaming: false,
+    evidence: [
+      { index: 1, paperId: 'p-attention-v7', section: '首页', page: 1, text: '片段一', relevance: 1 },
+      { index: 3, paperId: 'p-attention-v7', section: '正文', page: 2, text: '片段三', relevance: 0.5 },
+    ],
+    snippets: [{}, {}, {}, {}],
+  });
+  App.store.state.activeChatId = target.id;
+  App.store.notify('chats');
+  renderView('qa');
+  const items = el.querySelectorAll('.evi-item');
+  if (items.length !== 2) throw new Error('引用卡片应为 2 条，实际 ' + items.length);
+  const first = items[0].innerHTML || '';
+  const second = items[1].innerHTML || '';
+  if (first.indexOf('[1]') === -1) throw new Error('第一张卡片编号不是 [1]');
+  if (second.indexOf('[3]') === -1) throw new Error('第二张卡片编号应为 [3]，实际：' + second.slice(0, 60));
+  // 锚点 id 也要用原编号，点击 [3] 才能定位到卡片
+  mustFind('#evi-3', '第三段的锚点');
+});
+
 t('写作：四个标签页都能渲染且各有核心元素', () => {
   const expects = { outline: '#idea', diagram: '#diagram-code', viz: '#pick-csv', translate: '#zh-src' };
   Object.keys(expects).forEach((tab) => {

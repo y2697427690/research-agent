@@ -228,13 +228,22 @@ window.App = window.App || {};
           ${m.evidence && m.evidence.length ? U.raw(h`
             <div class="msg-evidence">
               <div class="row gap-8 mb-8">
-                <span class="badge badge-brand">检索命中 ${m.evidence.length} 段</span>
-                <span class="muted tiny">按相关度排序 · 已用于生成上方回答</span>
+                <span class="badge badge-brand">
+                  ${m.snippets && m.snippets.length > m.evidence.length
+                    ? '检索命中 ' + m.snippets.length + ' 段 · 引用 ' + m.evidence.length + ' 段'
+                    : '引用 ' + m.evidence.length + ' 段原文'}
+                </span>
+                <span class="muted tiny">编号与上方回答里的 [n] 一一对应</span>
               </div>
-              ${U.raw(m.evidence.map((e, i) => h`
-                <div class="evi-item" data-evi="${i + 1}" id="evi-${i + 1}">
+              ${U.raw(m.evidence.map((e, i) => {
+                // 用后端给的片段编号，而不是数组下标：
+                // 回答可能只引用第 1、3 段，按下标编号会显示成 [1][2]，
+                // 用户会以为引用对不上（真实反馈过）。
+                const no = e.index || (i + 1);
+                return h`
+                <div class="evi-item" data-evi="${no}" id="evi-${no}">
                   <div class="row gap-8">
-                    <span class="cite">[${i + 1}]</span>
+                    <span class="cite">[${no}]</span>
                     <span class="small" style="font-weight:600">${paperTitle(e.paperId)}</span>
                     <span class="muted tiny">${e.section} · 第 ${e.page} 页</span>
                     <div class="spacer"></div>
@@ -242,7 +251,8 @@ window.App = window.App || {};
                   </div>
                   <div class="evi-text mt-8">${e.text}</div>
                   ${e.note ? U.raw(h`<div class="muted tiny mt-8">用途：${e.note}</div>`) : ''}
-                </div>`).join(''))}
+                </div>`;
+              }).join(''))}
             </div>`) : ''}
 
           <div class="row gap-8 mt-8">
