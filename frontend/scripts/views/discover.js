@@ -136,7 +136,10 @@ window.App = window.App || {};
           <div class="disc-actions">
             ${it.inLibrary
               ? U.raw(h`<span class="badge badge-ok">已在库</span>`)
-              : U.raw(h`
+              : it.withdrawn
+                // 撤稿论文没有 PDF，点了只会等一次 404 —— 直接说明原因，不给按钮
+                ? U.raw(h`<span class="badge badge-warn" title="arXiv 已撤稿，没有 PDF 可下载">已撤稿 · 无法入库</span>`)
+                : U.raw(h`
                 <button class="btn btn-sm btn-primary" data-action="discover-ingest"
                   data-id="${it.fullId || it.arxivId}" ${busy ? 'disabled' : ''}>
                   ${busy ? '下载入库中…' : '入库并解析'}

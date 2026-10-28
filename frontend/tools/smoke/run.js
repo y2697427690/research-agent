@@ -1139,6 +1139,28 @@ t('发现：后端 snake_case 结果必须映射成 arxivId / pdfUrl', () => {
   }
 });
 
+t('发现：已撤稿的论文不给入库按钮，改为说明原因', () => {
+  restore();
+  const it = App.adapter.discoverItem({
+    arxiv_id: '1304.1836', version: 'v2', title: 'Withdrawn paper',
+    authors: ['A'], summary: 'This submission has been withdrawn by arXiv administrators.',
+    published: '2013-04-06', primary_category: 'cs.OH',
+    pdf_url: '', abs_url: 'https://arxiv.org/abs/1304.1836v2', in_library: false,
+    withdrawn: true,
+  });
+  if (it.withdrawn !== true) throw new Error('withdrawn 未映射');
+
+  App.store.state.discover.query = 'test';
+  App.store.state.discover.items = [it];
+  renderView('discover');
+  // 撤稿论文不能出现入库按钮（点了只会等一次 404）
+  if (countExact('[data-action="discover-ingest"]') !== 0) {
+    throw new Error('撤稿论文不应渲染入库按钮');
+  }
+  mustText('已撤稿');
+  mustText('无法入库');
+});
+
 t('发现：底部如实说明尚未实现的能力', () => {
   restore();
   renderView('discover');

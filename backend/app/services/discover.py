@@ -60,6 +60,7 @@ class ArxivItem:
     comment: str | None = None    # 作者备注，常含「已被 XX 会议接收」
     pdf_url: str = ""
     abs_url: str = ""
+    withdrawn: bool = False       # arXiv 已撤稿：没有 PDF，不允许入库
 
 
 def build_query(raw: str) -> tuple[str, bool]:
@@ -91,6 +92,19 @@ def build_fallback_query(raw: str) -> str:
     return f"all:{q}"
 
 
+def _is_withdrawn(summary: str | None, comment: str | None) -> bool:
+    """判断是否已被 arXiv 撤稿。
+
+    arXiv 的惯例是撤稿论文把摘要替换成一句说明，常见写法：
+      "This submission has been withdrawn by arXiv administrators…"
+      "This paper has been withdrawn by the author…"
+    这类论文没有 PDF，点「入库」只会得到一个 404。
+    在检索结果里提前标出来，比让用户等一次失败的下载更好。
+    """
+    text = f"{summary or ''} {comment or ''}".lower()
+    return "withdrawn" in text
+
+
 def _to_item(result: arxiv.Result) -> ArxivItem:
     """把 arxiv.Result 转成我们自己的结构。
 
@@ -105,17 +119,21 @@ def _to_item(result: arxiv.Result) -> ArxivItem:
     def day(value) -> str | None:
         return value.date().isoformat() if value else None
 
+    summary = (result.summary or "").strip()
+    comment = (result.comment or None)
+
     return ArxivItem(
         arxiv_id=arxiv_id,
         version=version,
         title=(result.title or "").strip(),
         authors=[a.name for a in (result.authors or [])][:20],
-        summary=(result.summary or "").strip(),
+        summary=summary,
         published=day(result.published),
         updated=day(result.updated),
         primary_category=result.primary_category,
         categories=list(result.categories or []),
-        comment=(result.comment or None),
+        comment=comment,
+        withdrawn=_is_withdrawn(summary, comment),
         pdf_url=result.pdf_url or "",
         abs_url=result.entry_id or "",
     )
@@ -176,6 +194,18 @@ async def search(
     )
 
 
+def _pdf_candidates(arxiv_id: str) -> list[str]:
+    """下载 PDF 时依次尝试的编号。
+
+    先试带版本号的（用户看到的就是这一版），再试不带版本号的：
+    少数旧论文只保留无版本号入口；被撤稿的论文两者都 404，
+    由调用方给出「可能已被撤稿」的提示。
+    """
+    aid = (arxiv_id or "").strip()
+    bare = re.sub(r"v\d+$", "", aid)
+    return [aid] if bare == aid else [aid, bare]
+
+
 async def download_pdf(arxiv_id: str, max_mb: int = 60) -> bytes:
     """下载某篇论文的 PDF 原文。
 
@@ -183,25 +213,41 @@ async def download_pdf(arxiv_id: str, max_mb: int = 60) -> bytes:
     那个 URL 带版本号（…/pdf/1706.03762v5），而入库时要按编号去重，
     统一用 https://arxiv.org/pdf/<编号> 让 arXiv 返回最新版本，
     文件名也由调用方按编号生成，便于后续 extract_arxiv_id 识别。
+
+    关于带版本号失败的情况：
+    被撤稿的论文（arXiv 上标注 withdrawn）没有 PDF，带版本号会 404；
+    少数旧论文只保留无版本号的入口。所以 vN 失败后会用不带版本号再试一次。
     """
     aid = (arxiv_id or "").strip()
     if not re.match(r"^[a-zA-Z0-9.\-/_]+$", aid):
         raise ValueError(f"非法的 arXiv 编号: {aid}")
 
-    url = f"https://arxiv.org/pdf/{aid}"
+    candidates = _pdf_candidates(aid)
+
     limit = max_mb * 1024 * 1024
+    last_error: Exception | None = None
     async with httpx.AsyncClient(
         follow_redirects=True,
         timeout=httpx.Timeout(90.0, connect=15.0),
         headers={"User-Agent": "research-agent/0.1 (arxiv ingest)"},
     ) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        data = response.content
+        for candidate in candidates:
+            url = f"https://arxiv.org/pdf/{candidate}"
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                data = response.content
+            except httpx.HTTPError as exc:
+                last_error = exc
+                logger.info("下载 %s 失败（%s），尝试下一个入口", url, exc)
+                continue
 
-    if len(data) > limit:
-        raise ValueError(f"PDF 超过 {max_mb} MB 上限")
-    # arXiv 偶尔会返回 HTML 的错误页（限流时），必须校验文件头
-    if not data.startswith(b"%PDF"):
-        raise ValueError("下载到的内容不是 PDF（可能被 arXiv 限流）")
-    return data
+            if len(data) > limit:
+                raise ValueError(f"PDF 超过 {max_mb} MB 上限")
+            # arXiv 偶尔会返回 HTML 的错误页（限流时），必须校验文件头
+            if not data.startswith(b"%PDF"):
+                raise ValueError("下载到的内容不是 PDF（可能被 arXiv 限流）")
+            return data
+
+    assert last_error is not None
+    raise last_error

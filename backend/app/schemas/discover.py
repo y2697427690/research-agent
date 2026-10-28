@@ -24,6 +24,10 @@ class ArxivItemOut(BaseModel):
     in_library: bool = Field(
         False, description="该编号是否已在库中（前端据此把按钮显示为「已在库」）"
     )
+    withdrawn: bool = Field(
+        False,
+        description="arXiv 已撤稿：没有 PDF 可下载，前端应禁用「入库」按钮并说明原因",
+    )
 
 
 class DiscoverSearchResponse(BaseModel):

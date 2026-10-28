@@ -92,6 +92,7 @@ async def search_arxiv(
                 pdf_url=it.pdf_url,
                 abs_url=it.abs_url,
                 in_library=it.arxiv_id in known,
+                withdrawn=it.withdrawn,
             )
             for it in items
         ],
@@ -115,8 +116,12 @@ async def ingest_arxiv(
         data = await discover.download_pdf(arxiv_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("下载 arXiv PDF 失败 %s: %s", arxiv_id, exc)
+        # 绝大多数失败是「这篇没有 PDF 可下载」：被撤稿、尚未上传，
+        # 或者是只有摘要页的旧条目。原始异常写进 detail 便于排查，
+        # 但给用户的话必须说清是什么情况，而不是只说“失败”。
         raise InvalidRequest(
-            f"下载 arXiv:{arxiv_id} 失败",
+            f"arXiv:{arxiv_id} 的 PDF 下载失败：可能已被撤稿、尚未上传，或暂时被限流。"
+            f"可点「PDF 原文」到 arXiv 页面确认。",
             {"reason": f"{type(exc).__name__}: {exc}"[:200]},
         ) from exc
 
