@@ -840,7 +840,10 @@ window.App = window.App || {};
       notify('discover');
       try {
         const data = await App.api.searchArxiv(q, 10, state.discover.sort);
-        state.discover.items = data.items || [];
+        // 后端字段是 snake_case，必须过一层映射再进状态：
+        // 否则 arxivId 取不到（按钮 data-id 变 undefined，点了没反应），
+        // pdfUrl 也取不到（「PDF 原文」href 退化成 '#'，点了不跳转）。
+        state.discover.items = (data.items || []).map(App.adapter.discoverItem);
         state.discover.total = data.total || 0;
         state.discover.hint = data.hint || null;
         state.discover.effectiveQuery = data.effective_query || '';
@@ -894,7 +897,7 @@ window.App = window.App || {};
           await actions.loadPapers();
           // 标记该条已在库，避免用户重复点击
           state.discover.items = state.discover.items.map((it) =>
-            it.arxivId === arxivId ? Object.assign({}, it, { inLibrary: true }) : it
+            (it.fullId || it.arxivId) === arxivId ? Object.assign({}, it, { inLibrary: true }) : it
           );
           App.ui.toast('《' + ((res.paper && res.paper.title) || arxivId) + '》已入库并解析', 'ok', 3200);
         }

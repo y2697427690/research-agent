@@ -68,6 +68,39 @@ window.App = window.App || {};
     return yy < 91 ? 2000 + yy : 1900 + yy;
   }
 
+  /**
+   * 后端 arXiv 检索结果 → 发现页条目。
+   *
+   * 必需的一步：后端返回的是 snake_case（arxiv_id / pdf_url / abs_url /
+   * primary_category / in_library），而视图按 camelCase 读。
+   * 之前漏了这层映射，导致：
+   *   · 「入库并解析」按钮的 data-id 是 undefined → 点了没反应
+   *   · 「PDF 原文」的 href 退化成 '#' → 点了不跳转
+   */
+  function discoverItem(raw) {
+    const it = raw || {};
+    const id = it.arxiv_id || it.arxivId || '';
+    const ver = it.version || '';
+    return {
+      arxivId: id,
+      // arXiv 的 IDF 形如 1706.03762v7：下载/入库都带版本号更准确
+      fullId: id && ver ? id + ver : id,
+      version: ver,
+      title: it.title || '(无标题)',
+      authors: it.authors || [],
+      summary: it.summary || it.abstract || '',
+      published: it.published || '',
+      updated: it.updated || '',
+      primaryCategory: it.primary_category || it.primaryCategory || '',
+      categories: it.categories || [],
+      comment: it.comment || '',
+      pdfUrl: it.pdf_url || it.pdfUrl || '',
+      absUrl: it.abs_url || it.absUrl || '',
+      doi: it.doi || '',
+      inLibrary: !!(it.in_library != null ? it.in_library : it.inLibrary),
+    };
+  }
+
   /* ---------------- 论文 ---------------- */
 
   /**
@@ -238,6 +271,7 @@ window.App = window.App || {};
     papersFromApi,
     evidenceFromHit,
     evidenceFromHits,
+    discoverItem,
     versionFromFileName,
     splitAuthors,
     splitKeywords,

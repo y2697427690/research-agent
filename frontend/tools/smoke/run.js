@@ -1,4 +1,4 @@
-﻿/* 无浏览器的冒烟测试：加载全部脚本、渲染每个视图、执行关键交互，捕获运行时错误。
+/* 无浏览器的冒烟测试：加载全部脚本、渲染每个视图、执行关键交互，捕获运行时错误。
    自带一个极简 HTML 解析器作为 querySelector 的桩，用来发现「找不到元素」类真实缺陷。 */
 const fs = require('fs');
 const path = require('path');
@@ -257,6 +257,7 @@ ctx.window = windowStub;
 const ORDER = [
   'scripts/core/util.js',
   'scripts/data/mock-data.js',
+    'scripts/data/adapter.js',
   'scripts/core/rag.js',
   'scripts/core/dedupe.js',
   'scripts/core/writer.js',
@@ -1099,6 +1100,42 @@ t('发现：检索结果卡片渲染标题、作者、arXiv 编号与操作按�
   }
   if (rawCard.indexOf('多词查询会自动加上引号') === -1) {
     throw new Error('缺少「多词查询按短语匹配」的说明');
+  }
+});
+
+t('发现：后端 snake_case 结果必须映射成 arxivId / pdfUrl', () => {
+  restore();
+  // 后端真实返回（截取）：snake_case 字段
+  const raw = {
+    arxiv_id: '2510.09904', version: 'v2', title: 'Stability of Transformers',
+    authors: ['Kelvin Kan'], summary: 'A study.', published: '2025-10-10',
+    primary_category: 'cs.LG', comment: 'NeurIPS 2025',
+    pdf_url: 'https://arxiv.org/pdf/2510.09904v2',
+    abs_url: 'https://arxiv.org/abs/2510.09904v2',
+    in_library: false,
+  };
+  const it = App.adapter.discoverItem(raw);
+  if (it.arxivId !== '2510.09904') throw new Error('arxivId 未映射：' + it.arxivId);
+  if (it.fullId !== '2510.09904v2') throw new Error('fullId 未拼接版本号：' + it.fullId);
+  if (!it.pdfUrl || it.pdfUrl.indexOf('arxiv.org/pdf') === -1) {
+    throw new Error('pdfUrl 未映射（「PDF 原文」会退化成 # 点不动）：' + it.pdfUrl);
+  }
+  if (!it.absUrl) throw new Error('absUrl 未映射');
+  if (it.primaryCategory !== 'cs.LG') throw new Error('primaryCategory 未映射');
+  if (it.inLibrary !== false) throw new Error('inLibrary 未映射');
+
+  // 渲染时按钮必须带上完整编号，否则后端拿不到 arXiv id
+  App.store.state.discover.query = 'test';
+  App.store.state.discover.items = [it];
+  renderView('discover');
+  const btn = el.querySelector('[data-action="discover-ingest"]');
+  if (!btn) throw new Error('未渲染入库按钮');
+  if (btn.dataset.id !== '2510.09904v2') {
+    throw new Error('入库按钮的 data-id 不对：' + btn.dataset.id);
+  }
+  const rawItem = String(App.views.discover.itemCard(it, App.store.state.discover));
+  if (rawItem.indexOf('https://arxiv.org/pdf/2510.09904v2') === -1) {
+    throw new Error('PDF 原文链接没有渲染出真实地址：' + rawItem.slice(0, 200));
   }
 });
 

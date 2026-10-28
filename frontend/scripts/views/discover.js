@@ -116,7 +116,7 @@ window.App = window.App || {};
 
   /** 一条检索结果 */
   function itemCard(it, d) {
-    const busy = !!d.ingesting[it.arxivId];
+    const busy = !!d.ingesting[it.fullId || it.arxivId];
     const meta = [
       it.authors && it.authors.length ? U.clip(it.authors.slice(0, 3).join(', ') + (it.authors.length > 3 ? ' 等' : ''), 60) : '',
       it.published || '',
@@ -138,7 +138,7 @@ window.App = window.App || {};
               ? U.raw(h`<span class="badge badge-ok">已在库</span>`)
               : U.raw(h`
                 <button class="btn btn-sm btn-primary" data-action="discover-ingest"
-                  data-id="${it.arxivId}" ${busy ? 'disabled' : ''}>
+                  data-id="${it.fullId || it.arxivId}" ${busy ? 'disabled' : ''}>
                   ${busy ? '下载入库中…' : '入库并解析'}
                 </button>`)}
             <a class="btn btn-sm btn-ghost" href="${it.pdfUrl || it.absUrl || '#'}" target="_blank" rel="noopener">PDF 原文</a>
