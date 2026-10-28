@@ -105,12 +105,40 @@ window.App = window.App || {};
 
   function get(path) { return request(path, { method: 'GET' }); }
 
-  function postJson(path, body) {
-    return request(path, {
+  /**
+   * POST JSON；可选 timeoutMs：超时后主动中断请求。
+   * 用途：arXiv 下载可能因为对方限速拖到几分钟，界面不能一直转圈，
+   * 到点必须给出明确失败提示（后端另有 75 秒的下载截止时间兜底）。
+   */
+  function postJson(path, body, timeoutMs) {
+    const opts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
-    });
+    };
+    if (!timeoutMs) return request(path, opts);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    opts.signal = controller.signal;
+    return request(path, opts)
+      .catch((err) => {
+        if (err && err.name === 'AbortError') {
+          throw new ApiError(
+            '请求超时（' + Math.round(timeoutMs / 1000) + ' 秒）：arXiv 可能对服务器限速，请稍后重试',
+            'TIMEOUT', 0
+          );
+        }
+        // request 会把 AbortError 包成 NETWORK，这里还原成超时语义
+        if (err && err.code === 'NETWORK' && controller.signal.aborted) {
+          throw new ApiError(
+            '请求超时（' + Math.round(timeoutMs / 1000) + ' 秒）：arXiv 可能对服务器限速，请稍后重试',
+            'TIMEOUT', 0
+          );
+        }
+        throw err;
+      })
+      .finally(() => clearTimeout(timer));
   }
 
   function patchJson(path, body) {
@@ -218,9 +246,14 @@ window.App = window.App || {};
         '&sort=' + (sort || 'relevance')
       );
     },
-    /** 把某篇 arXiv 论文下载入库（返回 accepted / duplicate） */
+    /**
+     * 把某篇 arXiv 论文下载入库（返回 accepted / duplicate）。
+     * 90 秒超时：正常 10~30 秒即可，主要耗时在 arXiv 那边的限速；
+     * 超过这个时间基本可判定对方在限制我们，继续等没有意义，
+     * 直接给用户「超时，请稍后重试」比一直转圈好。
+     */
     ingestArxiv(arxivId, force) {
-      return postJson('/discover/ingest', { arxiv_id: arxivId, force: !!force });
+      return postJson('/discover/ingest', { arxiv_id: arxivId, force: !!force }, 90000);
     },
 
     /* ---- 引用图谱 ---- */

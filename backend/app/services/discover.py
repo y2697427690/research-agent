@@ -18,6 +18,7 @@ arXiv 官方要求客户端两次请求间隔不少于 3 秒，否则可能被�
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 
@@ -28,6 +29,10 @@ import httpx
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# 下载总截止时间（秒）。arXiv 对同一 IP 会限速，实测本机只有 ~18 KB/s，
+# 论文大一点就几分钟。没有这个截止时间，界面会一直停在「下载入库中…」。
+_DOWNLOAD_DEADLINE = 75.0
 
 # 单次检索的整体超时。arxiv 库本身不暴露 timeout 参数，
 # 所以用 anyio.fail_after 在外层兜住「网络卡住」的情况。
@@ -217,37 +222,53 @@ async def download_pdf(arxiv_id: str, max_mb: int = 60) -> bytes:
     关于带版本号失败的情况：
     被撤稿的论文（arXiv 上标注 withdrawn）没有 PDF，带版本号会 404；
     少数旧论文只保留无版本号的入口。所以 vN 失败后会用不带版本号再试一次。
+
+    关于超时（重要）：
+    arXiv 对同一 IP 的 PDF 下载会限速。实测本服务器只拿到 ~18 KB/s，
+    一篇 0.5 MB 的论文要 30 秒，更大的论文能拖到几分钟。
+    只靠 httpx 的 read timeout 挡不住这种「缓慢滴流」，所以这里再加一个
+    总的墙钟截止时间：超时就直接失败并说明原因，让用户重试，
+    而不是让界面一直停在「下载入库中…」。
     """
     aid = (arxiv_id or "").strip()
     if not re.match(r"^[a-zA-Z0-9.\-/_]+$", aid):
         raise ValueError(f"非法的 arXiv 编号: {aid}")
 
     candidates = _pdf_candidates(aid)
-
     limit = max_mb * 1024 * 1024
-    last_error: Exception | None = None
-    async with httpx.AsyncClient(
-        follow_redirects=True,
-        timeout=httpx.Timeout(90.0, connect=15.0),
-        headers={"User-Agent": "research-agent/0.1 (arxiv ingest)"},
-    ) as client:
-        for candidate in candidates:
-            url = f"https://arxiv.org/pdf/{candidate}"
-            try:
-                response = await client.get(url)
-                response.raise_for_status()
-                data = response.content
-            except httpx.HTTPError as exc:
-                last_error = exc
-                logger.info("下载 %s 失败（%s），尝试下一个入口", url, exc)
-                continue
 
-            if len(data) > limit:
-                raise ValueError(f"PDF 超过 {max_mb} MB 上限")
-            # arXiv 偶尔会返回 HTML 的错误页（限流时），必须校验文件头
-            if not data.startswith(b"%PDF"):
-                raise ValueError("下载到的内容不是 PDF（可能被 arXiv 限流）")
-            return data
+    async def _fetch() -> bytes:
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(45.0, connect=10.0, read=45.0),
+            headers={"User-Agent": "research-agent/0.1 (arxiv ingest)"},
+        ) as client:
+            for candidate in candidates:
+                url = f"https://arxiv.org/pdf/{candidate}"
+                try:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    data = response.content
+                except httpx.HTTPError as exc:
+                    last_error = exc
+                    logger.info("下载 %s 失败（%s），尝试下一个入口", url, exc)
+                    continue
 
-    assert last_error is not None
-    raise last_error
+                if len(data) > limit:
+                    raise ValueError(f"PDF 超过 {max_mb} MB 上限")
+                # arXiv 偶尔会返回 HTML 的错误页（限流时），必须校验文件头
+                if not data.startswith(b"%PDF"):
+                    raise ValueError("下载到的内容不是 PDF（可能被 arXiv 限流）")
+                return data
+
+        assert last_error is not None
+        raise last_error
+
+    try:
+        return await asyncio.wait_for(_fetch(), timeout=_DOWNLOAD_DEADLINE)
+    except TimeoutError as exc:
+        raise ValueError(
+            f"下载超时（超过 {_DOWNLOAD_DEADLINE:.0f} 秒）：arXiv 对同一 IP 限速，"
+            f"请稍后重试，或直接上传本地 PDF"
+        ) from exc

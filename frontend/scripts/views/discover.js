@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    views/discover.js — 论文发现（arXiv 检索）
    ----------------------------------------------------------------------------
    这一版重写的原因：旧版整页都是演示数据（App.data.recommendations），
@@ -142,7 +142,7 @@ window.App = window.App || {};
                 : U.raw(h`
                 <button class="btn btn-sm btn-primary" data-action="discover-ingest"
                   data-id="${it.fullId || it.arxivId}" ${busy ? 'disabled' : ''}>
-                  ${busy ? '下载入库中…' : '入库并解析'}
+                  ${busy ? '下载入库中…（arXiv 限速时较慢）' : '入库并解析'}
                 </button>`)}
             <a class="btn btn-sm btn-ghost" href="${it.pdfUrl || it.absUrl || '#'}" target="_blank" rel="noopener">PDF 原文</a>
           </div>
