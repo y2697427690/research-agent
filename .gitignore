@@ -86,3 +86,8 @@ notes/
 
 # 构建时若目标 docx 被 WPS 占用，脚本会另存为这个文件；属于临时产物
 技术文档-新.docx
+
+# 技术文档构建中间产物（每次 make_report.py 自动重写，不必入库）
+docs/tech-report/技术文档.html
+docs/tech-report/.chapters.json
+docs/tech-report/toc_pages.json

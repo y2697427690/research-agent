@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-82%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-168%20passed-brightgreen)]()
 [![Ruff](https://img.shields.io/badge/ruff-0%20issues-orange)]()
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
@@ -65,7 +65,7 @@
 | 图论分析 | NetworkX | 引用网络与中心性分析 |
 | 大模型 | OpenAI 兼容 API | DeepSeek / OpenAI / 本地 Ollama 均可切换 |
 | 代码规范 | Ruff | 规则集 E/W/F/I/N/UP/B/SIM |
-| 测试 | pytest + pytest-asyncio | 82 个用例 |
+| 测试 | pytest + pytest-asyncio | 168 个用例 |
 
 ---
 
@@ -183,7 +183,7 @@ _（录制完成后填写）_
 # 后端：单元测试 + 接口测试 + 真实 PDF 回归
 cd backend
 python -m pytest tests -q
-# 期望：82 passed
+# 期望：168 passed
 
 # 代码规范检查
 python -m ruff check app tests
@@ -229,7 +229,7 @@ node frontend/tools/smoke/run.js
 │   │   ├── services/          业务层（解析 / 去重 / 论文服务）
 │   │   ├── static/            本地化的文档页资源
 │   │   └── main.py            应用入口
-│   ├── tests/                 82 个测试
+│   ├── tests/                 168 个测试
 │   ├── pyproject.toml         依赖与 ruff / pytest 配置
 │   └── .env.example           环境变量模板
 │
