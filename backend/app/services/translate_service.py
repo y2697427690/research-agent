@@ -71,6 +71,73 @@ def build_messages(text: str) -> list[dict]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# 通用文本翻译（写作页中译英 / 划词翻译英译中）
+# ---------------------------------------------------------------------------
+# 与上面「按论文翻译分块」的区别：
+#   1. 这里的输入是用户随手写的一段文字，没有分块、没有数据库记录；
+#   2. 结果不落库，只放进进程内的 LRU 式缓存，重启即失效 —— 够用且不占磁盘。
+# 为什么要缓存：用户经常点两次「翻译」比效果，重复调用是白花的钱。
+
+ZH_TO_EN_SYSTEM_PROMPT = """你是学术写作助手，负责把中文摘要翻译成英文。请严格遵守：
+
+1. 只输出英文译文，不要任何解释、前言、总结或 Markdown 标记。
+2. 学术表达优先：例如「我们提出了」→ "we propose"，「实验表明」→
+   "experiments show that"。
+3. 专业术语使用领域内通行的英文写法（注意力机制 → attention mechanism，
+   残差连接 → residual connection）；不确定时保留直译，不要生造词。
+4. 数字、公式、变量名、引用编号（如 [1]）原样保留。
+5. 保持原文的句子数量与段落结构，不要合并或拆分。
+6. 如果原文本身夹着英文术语，直接沿用，不要翻译成别的词。
+"""
+
+# 缓存最多存多少条：一段摘要约 1KB，200 条约 200KB，可忽略不计。
+_TEXT_CACHE_LIMIT = 200
+_text_cache: dict[tuple[str, str], str] = {}
+
+
+async def translate_free_text(text: str, direction: str = "zh2en") -> tuple[str, bool]:
+    """翻译一段自由文本，返回 (译文, 是否命中缓存)。
+
+    失败时直接抛 LLMUnavailable（由 llm.chat 统一转换），
+    由路由层翻译成对用户友好的错误 —— 这里不做兜底，
+    因为「翻译失败却返回原文」会让用户以为模型没生效。
+    """
+    body = (text or "").strip()
+    if not body:
+        raise ValueError("待翻译文本为空")
+
+    key = (direction, body)
+    hit = _text_cache.get(key)
+    if hit is not None:
+        return hit, True
+
+    if direction == "zh2en":
+        messages = [
+            {"role": "system", "content": ZH_TO_EN_SYSTEM_PROMPT},
+            {"role": "user", "content": f"翻译下面这段中文：\n-----\n{body}\n-----"},
+        ]
+    else:
+        # 英译中复用整篇翻译用的那套提示词，术语与格式规则一致
+        messages = build_messages(body)
+
+    raw = await llm.chat(messages, temperature=0.1)
+    translated = (raw or "").strip()
+    if not translated:
+        raise ValueError("模型没有返回译文")
+
+    # 超出上限就先丢最早的一条：字典保持插入顺序，popitem 取第一个键
+    if len(_text_cache) >= _TEXT_CACHE_LIMIT:
+        _text_cache.pop(next(iter(_text_cache)), None)
+    _text_cache[key] = translated
+    return translated, False
+
+
+def clear_text_cache() -> None:
+    """清空通用翻译缓存（测试用，避免用例之间互相影响）。"""
+    _text_cache.clear()
+
+
 async def translate_text(text: str) -> str:
     """翻译一段文本。失败抛 LLMUnavailable（由 llm.chat 统一转换）。"""
     raw = await llm.chat(build_messages(text), temperature=0.1)

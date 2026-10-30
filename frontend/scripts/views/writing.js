@@ -376,8 +376,9 @@ window.App = window.App || {};
       <div class="notice info mb-16">
         <span>ℹ</span>
         <div>
-          自动把中文摘要（或全文）翻译为英文。学术翻译需要保留术语一致性，
-          因此术语表会与文库中的论文标题 / 关键词对齐（例如「注意力机制」固定译为 attention mechanism）。
+          用大模型（deepseek-chat）把中文摘要翻译成英文，术语按学术写法输出；
+          同一段文字重复翻译会直接命中服务端缓存，不再重复计费。
+          断网或未配置 API Key 时，自动退回本地术语表替换，并明确提示。
         </div>
       </div>
 
@@ -395,7 +396,8 @@ window.App = window.App || {};
               <button class="btn btn-ghost" id="use-lib-abstract">重新载入文库摘要</button>
             </div>
             <div class="muted tiny mt-8">
-              演示实现：按内置术语表逐词替换，未接入翻译模型。术语表与文库论文标题 / 关键词对齐，专有名词译法因此保持一致。
+              提交到 <code>POST /api/v1/translate</code>，由模型输出译文；
+              服务端不落库，只在内存里缓存最近 200 段，重启即失效。
             </div>
           </div>
         </div>
@@ -404,7 +406,7 @@ window.App = window.App || {};
           <div class="card-head">
             <div class="card-title">英文译文</div>
             <div class="spacer"></div>
-            <span class="badge badge-brand">术语对齐文库</span>
+            <span class="badge badge-brand" id="en-badge">模型翻译</span>
           </div>
           <div class="card-body">
             <div class="abstract-en" id="en-out" style="min-height:180px">${out}</div>
@@ -465,15 +467,47 @@ window.App = window.App || {};
     App.ui.toast('绘图代码已复制到剪贴板', 'ok');
   }
 
-  function doTranslate() {
+  /**
+   * 中译英：真的调后端模型，不再是术语表替换。
+   *
+   * 三个状态都要让用户看见，否则会以为“点了没反应”：
+   *   进行中 → 按钮变「翻译中…」并禁用，输出区显示三点动画
+   *   成功   → 逐字输出译文，徽标显示模型名；命中缓存时提示“缓存”
+   *   失败   → 退回本地术语表（离线可用），并明确告诉用户这是降级结果
+   */
+  async function doTranslate() {
     const src = U.$('#zh-src');
     const out = U.$('#en-out');
+    const btn = U.$('[data-action="translate-abstract"]');
+    const badge = U.$('#en-badge');
     if (!src || !out) return;
     if (!src.value.trim()) { App.ui.toast('请输入要翻译的中文内容', 'warn'); return; }
+    if (btn && btn.disabled) return;       // 防连点：正在翻译时忽略重复点击
+
+    const text = src.value.trim();
+    const originalLabel = btn ? btn.textContent : '翻译为英文';
+    if (btn) { btn.disabled = true; btn.textContent = '翻译中…'; }
     out.textContent = '';
-    const result = App.writer.translateAbstract(src.value);
-    App.ui.toast('翻译完成（演示：术语替换 + 句式保留）', 'ok');
-    U.streamText(out, result, { speed: 10, chunk: 4 });
+    out.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+
+    try {
+      const res = await App.api.translateText(text, 'zh2en');
+      out.textContent = '';
+      U.streamText(out, res.text || '', { speed: 8, chunk: 3 });
+      if (badge) {
+        badge.textContent = res.cached ? '模型翻译 · 缓存命中' : '模型翻译 · ' + (res.model || 'LLM');
+      }
+      App.ui.toast(res.cached ? '译文已返回（命中缓存，未重复计费）' : '翻译完成', 'ok');
+    } catch (err) {
+      // 降级：断网 / 未配 Key / 上游失败时，用本地术语表给一个可用结果
+      const fallback = App.writer.translateAbstract(text);
+      out.textContent = '';
+      out.textContent = fallback;
+      if (badge) badge.textContent = '本地术语表（降级）';
+      App.ui.toast('模型翻译不可用（' + err.message + '），已退回本地术语表', 'warn', 4200);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    }
   }
 
   function loadingCard(text) {

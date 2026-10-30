@@ -226,6 +226,21 @@ window.App = window.App || {};
       return postJson('/papers/' + encodeURIComponent(id) + '/translate', body);
     },
 
+    /**
+     * 通用文本翻译（写作页中译英 / 划词翻译英译中）。
+     *
+     * 与 translatePaper 的区别：那个按论文 id 翻整篇并落库，
+     * 这个只翻一段文字、不落库，所以走独立接口 /translate。
+     * 超时给 60 秒：一段摘要通常 1~5 秒返回，超时基本是上游异常。
+     */
+    translateText(text, direction) {
+      return postJson(
+        '/translate',
+        { text: text, direction: direction || 'zh2en' },
+        60000
+      );
+    },
+
     /* ---- 向量化 ---- */
     embedPaper(id, limit) {
       return postJson('/papers/' + encodeURIComponent(id) + '/embed',
