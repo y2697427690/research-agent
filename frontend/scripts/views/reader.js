@@ -509,10 +509,29 @@ window.App = window.App || {};
     el.style.setProperty('--reader-zoom', App.store.state.reader.scale);
   }
 
+    /**
+   * 显示划词浮层。
+   *
+   * 顺序很关键：先写状态、再画浮层。
+   * 因为 App.store.set() 会触发 notify('reader') → 阅读器整页重绘，
+   * #selpop 会被替换成一个默认 hidden 的新节点。
+   * 若先画浮层再写状态，浮层立刻被新节点顶掉 ——
+   * 表现就是「选中文字没反应」（只有一帧的闪现）。
+   */
   function showSelPop(pop, text, sel) {
     const rect = sel.getRangeAt(0).getBoundingClientRect();
-    pop.classList.remove('hidden');
-    pop.innerHTML = h`
+
+    // ① 先写状态（这一步会触发重绘，旧的 #selpop 随之作废）
+    App.store.set({
+      reader: Object.assign({}, App.store.state.reader, { selection: { text: text } }),
+    }, 'reader');
+
+    // ② 重绘之后重新取节点；取不到就退回传进来的旧节点
+    const fresh = U.$('#selpop') || pop;
+    if (!fresh) return;
+
+    // ③ 填充内容
+    fresh.innerHTML = h`
       <div class="row gap-8 mb-8">
         <span class="badge badge-brand">划词翻译</span>
         <span class="muted tiny">${text.length} 字符</span>
@@ -522,11 +541,12 @@ window.App = window.App || {};
         <button class="btn btn-sm btn-primary" data-action="translate-selection">翻译为中文</button>
         <button class="btn btn-sm btn-ghost" data-action="copy-text">复制</button>
       </div>`;
-    pop.style.left = Math.min(window.innerWidth - 320, Math.max(12, rect.left - 60)) + 'px';
-    pop.style.top = (rect.bottom + 8 + window.scrollY) + 'px';
-    App.store.set({
-      reader: Object.assign({}, App.store.state.reader, { selection: { text: text } }),
-    }, 'reader');
+
+    // ④ 定位后显示
+    fresh.style.left = Math.min(window.innerWidth - 320, Math.max(12, rect.left - 60)) + 'px';
+    fresh.style.top = (rect.bottom + 8) + 'px';
+    fresh.classList.remove('hidden');
+
     window.__selection_rect = rect;
   }
 
@@ -571,11 +591,89 @@ window.App = window.App || {};
     App.store.actions.drawer('parse', { paperId: paperId || App.store.state.currentPaperId });
   }
 
-  /** 划词翻译：把选中英文译为中文并弹窗展示 */
-  function translateSelection() {
+    /**
+   * 划词翻译：把选中的英文译为中文。
+   *   现在调后端 POST /translate（direction=en2zh），术语与句式由模型处理
+   *   弹窗先开、译文后填 —— 网络往返 1~3 秒，不让用户盯着空窗
+   *   失败时退回本地术语表，并在弹窗里标「降级」
+   */
+  async function translateSelection() {
     const sel = App.store.state.reader.selection;
     if (!sel) return;
-    // 演示：内置少量术语翻译 + 通用提示
+
+    // 先把弹窗打开，译文位置放「翻译中」，这样点击立刻有反馈
+    const modal = App.ui.openModal(h`
+      <div class="modal">
+        <div class="modal-head">
+          <div class="modal-title">划词翻译</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline" id="sel-badge">翻译中…</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="muted tiny mb-8">原文</div>
+          <div class="abstract-en mb-16">${sel.text}</div>
+          <div class="muted tiny mb-8">译文</div>
+          <div class="abstract-zh" id="sel-zh">
+            <span class="dots"><i></i><i></i><i></i></span>
+          </div>
+          <div class="row gap-8 mt-16">
+            <button class="btn btn-sm btn-ghost" id="sel-copy">复制译文</button>
+          </div>
+          <div class="notice info mt-16">
+            <span>ℹ</span>
+            <div>对应需求 1.3.3.1：划词翻译。英译中走服务端模型；未配置 Key 或断网时退回本地术语表。</div>
+          </div>
+        </div>
+      </div>`);
+
+    // 选中状态用完了，先把选择框收起来，避免和弹窗叠在一起
+    App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: null }) }, 'reader');
+    const pop = U.$('#selpop');
+    if (pop) pop.classList.add('hidden');
+
+    const out = U.$('#sel-zh', modal.mask);
+    const badge = U.$('#sel-badge', modal.mask);
+    const copyBtn = U.$('#sel-copy', modal.mask);
+    const text = sel.text;
+
+    try {
+      const res = await App.api.translateText(text, 'en2zh');
+      if (out) out.textContent = res.text || '';
+      if (badge) {
+        badge.textContent = res.cached ? '模型翻译 · 缓存' : '模型翻译';
+        badge.className = 'badge badge-brand';
+      }
+    } catch (err) {
+      // 降级：本地术语表替换，保证功能可用，同时如实告知
+      const fallback = localGlossaryTranslate(text);
+      if (out) out.textContent = fallback;
+      if (badge) {
+        badge.textContent = '本地术语表（降级）';
+        badge.className = 'badge badge-warn';
+      }
+      App.ui.toast('模型翻译不可用（' + err.message + '），已退回本地术语表', 'warn', 4000);
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const now = out && out.textContent ? out.textContent : '';
+        if (!now) return;
+        if (navigator.clipboard) navigator.clipboard.writeText(now);
+        App.ui.toast('译文已复制', 'ok');
+      });
+    }
+  }
+
+  /**
+   * 本地术语表翻译（降级用）。
+   *
+   * 注意：它只是逐词替换，**不是翻译**。保留它有两个原因：
+   *   1. 断网演示时页面不至于空白；
+   *   2. 单元测试可以在没有网络的情况下验证弹窗渲染。
+   * 界面上必须标「降级」，否则就是骗用户。
+   */
+  function localGlossaryTranslate(text) {
     const glossary = {
       'residual connection': '残差连接', 'layer normalization': '层归一化',
       'multi-head attention': '多头注意力', 'scaled dot-product attention': '缩放点积注意力',
@@ -584,34 +682,12 @@ window.App = window.App || {};
       'decoder': '解码器', 'embedding': '词嵌入', 'softmax': 'softmax（不变）',
       'dropout': '随机失活', 'hyperparameter': '超参数', 'baseline': '基线',
     };
-    let zh = sel.text;
+    let zh = String(text || '');
     Object.keys(glossary).forEach((k) => {
-      const re = new RegExp(k, 'gi');
-      zh = zh.replace(re, glossary[k]);
+      zh = zh.replace(new RegExp(k, 'gi'), glossary[k]);
     });
-    if (zh === sel.text) zh = '【机器翻译】' + sel.text + '（演示环境仅展示术语替换结果，真实实现会调用翻译模型）';
-
-    App.ui.openModal(h`
-      <div class="modal">
-        <div class="modal-head">
-          <div class="modal-title">划词翻译</div>
-          <div class="spacer"></div>
-          <button class="btn btn-sm btn-ghost" data-close>✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="muted tiny mb-8">原文</div>
-          <div class="abstract-en mb-16">${sel.text}</div>
-          <div class="muted tiny mb-8">译文</div>
-          <div class="abstract-zh">${zh}</div>
-          <div class="notice info mt-16">
-            <span>ℹ</span>
-            <div>划词翻译对应需求 1.3.3.1；也支持整段选中翻译与鼠标悬停翻译（悬停需接入术语库以避免误触）。</div>
-          </div>
-        </div>
-      </div>`);
-    App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: null }) }, 'reader');
-    const pop = U.$('#selpop');
-    if (pop) pop.classList.add('hidden');
+    if (zh === text) zh = '（未命中术语表，且模型不可用，暂无法翻译这段文本）';
+    return zh;
   }
 
   /** 复制选中的文本 */
