@@ -770,16 +770,29 @@ t('阅读器：参考文献条目标注「库中已有原文」并可跳转', ()
   mustText('库中已有原文');
   mustFindAll('[data-action="open-ref-paper"]', 1, '参考文献跳转按钮');
 });
-t('阅读器：划词翻译能从选中文本生成译文弹窗', () => {
+t('阅读器：划词翻译先出弹窗，再异步填译文（失败降级）', async () => {
   restore();
   App.store.actions.openPaper('p-attention-v7');
   App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: { text: 'residual connection and layer normalization' } }) }, 'reader');
+
+  // 注意不要 await：函数内部会先开弹窗，再等网络
   App.views.reader.translateSelection();
-  // 弹窗挂在 document.body 上
+
+  // 弹窗必须立刻出现，此时译文区是「翻译中」的加载点
   const modal = documentStub.body.querySelector('.modal');
-  if (!modal) throw new Error('未生成翻译弹窗');
+  if (!modal) throw new Error('点击后没有立刻弹出窗口（用户会觉得没反应）');
+
+  // 测试环境没有 fetch，请求必然失败 → 走降级分支；
+  // 等一个事件循环让 catch 执行完再断言
+  await new Promise((r) => setTimeout(r, 30));
+
   const txt = modal.innerHTML || '';
-  if (txt.indexOf('残差连接') === -1 || txt.indexOf('层归一化') === -1) throw new Error('术语未翻译：' + txt.slice(0, 120));
+  if (txt.indexOf('残差连接') === -1 || txt.indexOf('层归一化') === -1) {
+    throw new Error('降级后未命中术语表：' + txt.slice(0, 160));
+  }
+  if (txt.indexOf('降级') === -1) {
+    throw new Error('降级时必须标注「降级」，不能让用户以为是模型翻译');
+  }
 });
 t('阅读器：未选择论文时给出选择列表', () => {
   restore();
