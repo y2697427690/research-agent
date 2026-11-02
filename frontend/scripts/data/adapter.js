@@ -372,6 +372,41 @@ window.App = window.App || {};
      演示论文看完整（含译文/图表），真实论文看真实正文。
      ------------------------------------------------------------------ */
 
+
+  /**
+   * 从正文里抽出引文编号，供正文角标渲染用。
+   *
+   * 与后端 reference_service.extract_cite_numbers 保持同样的规则：
+   * 支持 [12]、[12, 15]、[3-5]，兼容中英文逗号与 en/em dash。
+   * 为什么不直接复用后端的解析结果：分块文本是原文，前端要渲染的是
+   * 「这一段里出现了哪几个编号」，就地算最省一次请求。
+   */
+  function citeNumbers(text) {
+    const out = [];
+    const re = /\[([0-9,，\-–—\s]+)\]/g;
+    let m = re.exec(text || '');
+    while (m) {
+      m[1].split(/[,，]/).forEach((part) => {
+        const p = part.trim();
+        if (!p) return;
+        const rng = p.match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+        if (rng) {
+          const start = parseInt(rng[1], 10);
+          const end = parseInt(rng[2], 10);
+          if (end >= start && end - start <= 50) {
+            for (let n = start; n <= end; n += 1) out.push(n);
+          }
+          return;
+        }
+        if (/^\d+$/.test(p)) out.push(parseInt(p, 10));
+      });
+      m = re.exec(text || '');
+    }
+    return out;
+  }
+
+
+
   /**
    * 用后端分块拼出阅读器需要的 doc 结构。
    *
@@ -389,13 +424,20 @@ window.App = window.App || {};
       if (section !== currentSection) {
         currentSection = section;
         const id = 'sec-' + i;
-        blocks.push({
-          id: id,
-          type: 'h2',
-          en: section,
-          zh: section,          // 章节名通常已是英文，双语模式下两侧一致
-          page: c.page_start,
-        });
+        const cites = citeNumbers(c.text);
+      blocks.push({
+        id: 'b' + c.chunk_index,
+        type: 'p',
+        en: c.text,
+        // 译文来自后端（chunk_translations 表），未翻译时为空字符串：
+        // 双语模式下右侧留空，而不是显示英文冒充中文
+        zh: c.text_zh || '',
+        page: c.page_start,
+        pageEnd: c.page_end,
+        chunkId: c.id,
+        // 本段引用了哪几条文献：正文角标据此渲染成可点击的 [n]
+        cites: cites,
+      });
         toc.push({ id: id, title: section, level: 2 });
       }
       blocks.push({

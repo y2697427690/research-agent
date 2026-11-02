@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # 注意 [N] 也可能出现在公式或图表编号里，这里只做正则提取，
 # 是否"真的是文献引用"由后端解析阶段已经判定过（见 citations 表），
 # 所以这里不再做语义判断，避免误伤。
-CITE_GROUP = re.compile(r"\[([0-9,\-–—\s]+)\]")
+CITE_GROUP = re.compile(r"\[([0-9,，\-–—\s]+)\]")
 
 
 def extract_cite_numbers(text: str) -> list[int]:
