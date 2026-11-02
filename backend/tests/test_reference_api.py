@@ -98,6 +98,12 @@ async def test_references_numeric_style(client):
     assert by_no[1]["cited_in"] == [0]
     assert by_no[2]["cited_in"] == [1]
     assert by_no[3]["cited_in"] == []
+    # cited_count 是 dataclass 的 @property，不在 vars() 里，
+    # 组装响应时必须显式传，否则会一直是 0（线上曾出现过：
+    # cited_in 有值、cited_count 却是 0，前端全部显示"正文未引用"）
+    assert by_no[1]["cited_count"] == 1
+    assert by_no[2]["cited_count"] == 1
+    assert by_no[3]["cited_count"] == 0
     # raw_text 开头的 [n] 必须被剥掉，否则前端显示双编号
     assert by_no[1]["text"].startswith("Vaswani")
 

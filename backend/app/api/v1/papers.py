@@ -383,7 +383,12 @@ async def list_references(
         cited_total=report.cited_total,
         citing_style=report.citing_style,
         note=report.note,
-        items=[ReferenceItemOut(**vars(item)) for item in report.items],
+        # cited_count 在 dataclass 里是 @property，不在 vars() 里，
+        # 必须显式传；否则 Pydantic 会用默认值 0，前端所有条目都显示"正文未引用"。
+        items=[
+            ReferenceItemOut(**vars(item), cited_count=item.cited_count)
+            for item in report.items
+        ],
     )
 
 # ---------------------------------------------------------------- 正文分块
