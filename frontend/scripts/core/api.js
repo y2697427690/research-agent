@@ -240,6 +240,18 @@ window.App = window.App || {};
         60000
       );
     },
+   /**
+     * 某篇论文的参考文献（含每条在正文里的被引分段）。
+     *
+     * 返回结构：
+     *   { paper_id, total, cited_total, citing_style, note,
+     *     items: [{ ref_no, text, cited_in: [分块序号...], ... }] }
+     * citing_style 为 author-year 时，note 里会有给用户看的说明文案。
+     */
+    references(paperId) {
+      return get('/papers/' + encodeURIComponent(paperId) + '/references');
+    },
+
 
     /* ---- 向量化 ---- */
     embedPaper(id, limit) {

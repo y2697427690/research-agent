@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    app.js — 应用入口：视图注册、路由、外壳渲染
    ----------------------------------------------------------------------------
    渲染流程（单向数据流）：
@@ -194,6 +194,10 @@ window.App = window.App || {};
       case 'reader-zoom': S.setReaderScale(parseFloat(data.scale)); break;
       case 'toggle-sync': S.toggleSyncScroll(); break;
       case 'jump-cite': S.jumpCite(parseInt(data.cite, 10)); App.views.reader.scrollToRef(parseInt(data.cite, 10)); break;
+      // 参考文献 → 正文：跳到引用它的段落（多处引用可反复点，自动轮转）
+      case 'jump-citing': App.views.reader.jumpToCiting(parseInt(data.ref, 10)); break;
+      // 参考文献加载失败后的重试：清掉缓存重新渲染，渲染时会再次请求
+      case 'reload-refs': App.views.reader.retryReferences(); break;
       case 'goto-anchor': S.gotoAnchor(data.id); App.views.reader.scrollToAnchor(data.id); break;
       case 'goto-publication': App.views.reader.gotoPublication(data.id); break;
       case 'open-ref-paper': S.openPaper(data.id); break;

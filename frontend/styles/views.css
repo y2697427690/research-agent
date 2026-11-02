@@ -1013,3 +1013,40 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   .blk-flash { animation: none; }
 }
+
+/* ---- 参考文献区块（阅读器正文末尾） ----
+   独立成块 + 顶部粗分隔线，让读者一眼看出「正文到此结束、下面是参考文献」。
+   .doc-ref / .ref-no / .ref-text 复用已有的引文样式，避免两套视觉。 */
+.refs-block {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 2px solid var(--line-strong);
+}
+.refs-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.refs-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+/* 「跳到正文」按钮在窄屏下换行，不挤扁正文 */
+.refs-block .doc-ref { align-items: flex-start; }
+.refs-block .doc-ref > .btn { flex-shrink: 0; }
+
+/* 从参考文献跳到正文后出现的浮动返回条：
+   固定在阅读区底部，带上一处/下一处，不用滚回去找 */
+.ref-back-bar {
+  position: sticky;
+  bottom: 10px;
+  z-index: 30;
+  display: flex; justify-content: center; gap: 8px;
+  margin: 16px auto 0;
+  padding: 8px;
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--sh-2);
+  width: fit-content;
+}

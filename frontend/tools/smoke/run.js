@@ -672,6 +672,54 @@ t('阅读器：打开 Attention 并渲染正文 / 目录 / 引文', () => {
   mustFind('#outline');
   mustFind('#body-en');
 });
+t('阅读器：正文末尾渲染参考文献区块（离线时给出说明而不是报错）', () => {
+  restore();
+  App.store.actions.openPaper('p-attention-v7');
+  renderView('reader');
+  mustFind('#refs-block');
+  mustText('参考文献');
+  // 测试环境没有加载 api.js，应显示「离线模式」说明，而不是抛异常
+  mustText('离线模式');
+});
+t('阅读器：有数据时渲染参考文献条目并标注引用次数', async () => {
+  restore();
+  const had = App.api;
+  // 用一个假接口替换：测试环境本来没有 api.js
+  App.api = {
+    references: () => Promise.resolve({
+      paper_id: 'p-attention-v7',
+      total: 2,
+      cited_total: 1,
+      citing_style: 'numeric',
+      note: null,
+      items: [
+        { ref_no: 1, text: 'Vaswani et al. Attention Is All You Need.', cited_count: 2,
+          cited_in: [3, 5], match_method: 'arxiv', arxiv_id: '1706.03762' },
+        { ref_no: 2, text: 'Bahdanau et al. Neural Machine Translation.', cited_count: 0,
+          cited_in: [], match_method: 'none' },
+      ],
+    }),
+  };
+  try {
+    App.store.actions.openPaper('p-attention-v7');
+    renderView('reader');                 // 第一次渲染：状态是「正在载入」
+    await new Promise((r) => setTimeout(r, 20));   // 等 promise 落地 + notify
+    renderView('reader');                 // 第二次渲染：数据已就绪
+
+    mustFind('#ref-1');
+    mustFind('#ref-2');
+    mustText('被正文引用 2 段');
+    mustText('正文未引用');
+    mustText('按 arXiv 编号匹配');
+    mustText('arXiv:1706.03762');
+    // 只有被引用过的条目才有「跳到正文」按钮
+    if (countExact('[data-action="jump-citing"]') !== 1) {
+      throw new Error('「跳到正文」按钮应只有 1 个（未被引用的条目不显示）');
+    }
+  } finally {
+    App.api = had;
+  }
+});
 t('阅读器：中英对照模式出现两个正文面板', () => {
   restore();
   App.store.actions.openPaper('p-attention-v7');

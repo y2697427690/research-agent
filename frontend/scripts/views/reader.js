@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views/reader.js — 阅读器（结构化阅读 / 翻译 / 中英对比）
    ----------------------------------------------------------------------------
    对应需求 1.3「阅读和翻译」：
@@ -20,6 +20,30 @@ window.App = window.App || {};
   /** 同步滚动锁，避免两侧互相触发形成死循环 */
   let syncing = false;
 
+  /* ---- 参考文献视图状态 ----
+   * 为什么放在模块里而不是 store：
+   *   它只是某篇论文的渲染数据，跨页面没有意义；
+   *   放进 store 会让"状态快照 / 回滚 / 测试复位"都要照顾它，得不偿失。
+   * paperId 用来判断缓存是否属于当前论文，避免 A 论文的参考文献渲染到 B 上。
+   */
+  const refState = {
+    paperId: null,     // 缓存属于哪篇论文
+    report: null,      // 接口返回的 ReferenceListOut
+    loading: false,    // 是否正在请求
+    error: null,       // 请求失败的原因（给用户看）
+  };
+  /** 每条参考文献「跳到正文」的游标：多次点击依次跳到第 1、2、3…处 */
+  const citingCursor = {};
+
+  /**
+   * 当前划词选中的文本（只在内存里，不进 store）。
+   *
+   * 为什么不放 state：写 state 会 notify → 阅读器整页重绘，
+   * 滚动位置回到顶部、浏览器选区丢失。划词这种"高频、瞬时"的交互
+   * 不适合走全局状态，放模块变量最稳。
+   */
+  let pendingSelection = null;
+
   /* ==========================================================================
      1. 主渲染
      ========================================================================== */
@@ -33,6 +57,13 @@ window.App = window.App || {};
 
     const doc = App.data.getDoc(paperId);
     const mode = st.reader.mode;
+
+    // 重绘前记住滚动位置：翻译进度、参考文献加载等都会触发 notify → 重绘，
+    // 若不还原，读者每翻一页就会被拽回文首（实测很影响阅读体验）。
+    // 只在同一篇论文内还原；切换论文时应该从顶部开始。
+    const prevBody = U.$('#body-en');
+    const prevScroll = prevBody ? prevBody.scrollTop : 0;
+    const prevPaper = el.dataset.paperId || '';
 
     el.innerHTML = h`
       ${U.raw(modeBanner(mode, paper))}
@@ -68,6 +99,7 @@ window.App = window.App || {};
           </div>
           <div class="rd-pane-body" id="body-en" data-pane="en">
             ${U.raw(doc ? blocksHtml(doc.blocks, 'en') : placeholderDoc(paper))}
+            ${U.raw(refsHtml(paperId))}
           </div>
         </section>`) : ''}
 
@@ -98,6 +130,14 @@ window.App = window.App || {};
 
     if (doc) bindReader(el, doc, paper);
     bindSelection(el);
+
+    // 还原滚动位置（同一篇论文内）；切换论文时从头开始
+    if (prevPaper === paperId && prevScroll > 0) {
+      const nextBody = U.$('#body-en', el);
+      if (nextBody) nextBody.scrollTop = prevScroll;
+    }
+    el.dataset.paperId = paperId;
+
     // 从问答页「跳转原文」过来时，定位到对应段落并高亮
     applyFocusEvidence(el, doc, st);
   }
@@ -348,6 +388,28 @@ window.App = window.App || {};
       h`<span class="cite" data-action="jump-cite" data-cite="${n}" title="跳转到参考文献 [${n}]">[${n}]</span>`).join(''));
   }
 
+  /**
+   * 把正文里出现的 [n] 就地替换成可点击角标。
+   *
+   * 为什么不在段尾追加：真实论文的文字里本来就有 [12]，
+   * 再在末尾追加一份就成了双重显示（用户会以为段尾那几个是额外引用）。
+   * 只有「文本里完全没有 [n]」的演示数据，才走 citeSpans 的追加逻辑。
+   *
+   * 入参必须是**已转义**的文本（先 esc 再替换），
+   * 否则正文里的 < > 会破坏 HTML 结构。
+   */
+  function inlineCites(escapedText) {
+    return String(escapedText || '').replace(/\[([0-9,，\-–—\s]+)\]/g, (whole, group) => {
+      const digits = group.split(/[,，]/).map((s) => s.trim()).filter((s) => /^\d+$/.test(s));
+      // [图 3]、[3-5] 这类不是单条文献编号，原样保留，避免误转
+      if (!digits.length) return whole;
+      const spans = digits.map((n) =>
+        h`<span class="cite" data-action="jump-cite" data-cite="${n}" title="跳转到参考文献 [${n}]">${n}</span>`
+      ).join(', ');
+      return '[' + spans + ']';
+    });
+  }
+
   function blockHtml(b, lang) {
     const isEn = lang === 'en';
     const text = isEn ? b.en : b.zh;
@@ -358,8 +420,14 @@ window.App = window.App || {};
       case 'h1': return App.ui.Out(h`<h1 class="doc-h1" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}<span class="anchor-flag">§</span></h1>`);
       case 'h2': return App.ui.Out(h`<h2 class="doc-h2" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}</h2>`);
       case 'h3': return App.ui.Out(h`<h3 class="doc-h3" data-page="${b.page || 1}" id="${b.id}-${lang}">${text}</h3>`);
-      case 'p':
-        return App.ui.Out(h`<p class="doc-p" data-page="${b.page || 1}" id="${b.id}-${lang}">${U.raw(U.esc(text).replace(/\n/g, '<br/>'))}${U.raw(cites)}</p>`);
+      case 'p': {
+        const safe = U.esc(text).replace(/\n/g, '<br/>');
+        // 文字里自带 [n] → 就地转成角标，不再追加角标簇
+        const hasInline = /\[[0-9,，\-–—\s]+\]/.test(String(text || ''));
+        const body = hasInline ? inlineCites(safe) : safe;
+        const extra = hasInline ? '' : cites;
+        return App.ui.Out(h`<p class="doc-p" data-page="${b.page || 1}" id="${b.id}-${lang}">${U.raw(body)}${U.raw(extra)}</p>`);
+      }
       case 'list':
         return App.ui.Out(h`<div class="doc-list" data-page="${b.page || 1}" id="${b.id}-${lang}">${U.raw(U.esc(text).split('\n').map((l) =>
           h`<div class="doc-li">${l.replace(/^•\s*/, '')}</div>`).join(''))}</div>`);
@@ -509,28 +577,25 @@ window.App = window.App || {};
     el.style.setProperty('--reader-zoom', App.store.state.reader.scale);
   }
 
-    /**
+  /**
    * 显示划词浮层。
    *
-   * 顺序很关键：先写状态、再画浮层。
-   * 因为 App.store.set() 会触发 notify('reader') → 阅读器整页重绘，
-   * #selpop 会被替换成一个默认 hidden 的新节点。
-   * 若先画浮层再写状态，浮层立刻被新节点顶掉 ——
-   * 表现就是「选中文字没反应」（只有一帧的闪现）。
+   * 重要：这里**不能写 store**。
+   * 早先的实现把选中文本写进 `state.reader.selection`，而 App.store.set()
+   * 会 notify('reader') → 阅读器整页重绘，带来两个副作用：
+   *   1. #body-en 的 innerHTML 被重建 → 滚动位置回到顶部（用户以为"跳回第一页"）；
+   *   2. 浏览器原生的文本选区随 DOM 一起失效 → 选中状态消失。
+   * 所以选中文本只放在模块变量里，等用户点「翻译为中文」时再取用。
    */
   function showSelPop(pop, text, sel) {
     const rect = sel.getRangeAt(0).getBoundingClientRect();
 
-    // ① 先写状态（这一步会触发重绘，旧的 #selpop 随之作废）
-    App.store.set({
-      reader: Object.assign({}, App.store.state.reader, { selection: { text: text } }),
-    }, 'reader');
+    // 只记在内存里，不触发重绘（保持滚动位置与选区）
+    pendingSelection = { text: text };
 
-    // ② 重绘之后重新取节点；取不到就退回传进来的旧节点
-    const fresh = U.$('#selpop') || pop;
+    const fresh = pop || U.$('#selpop');
     if (!fresh) return;
 
-    // ③ 填充内容
     fresh.innerHTML = h`
       <div class="row gap-8 mb-8">
         <span class="badge badge-brand">划词翻译</span>
@@ -542,12 +607,213 @@ window.App = window.App || {};
         <button class="btn btn-sm btn-ghost" data-action="copy-text">复制</button>
       </div>`;
 
-    // ④ 定位后显示
+    // 定位后显示（fixed 定位，不需要加 scrollY）
     fresh.style.left = Math.min(window.innerWidth - 320, Math.max(12, rect.left - 60)) + 'px';
     fresh.style.top = (rect.bottom + 8) + 'px';
     fresh.classList.remove('hidden');
 
     window.__selection_rect = rect;
+  }
+
+  /* ==========================================================================
+     5.4 参考文献（双向跳转）
+     --------------------------------------------------------------------------
+     两个方向：
+       正文角标 [n]  →  跳到文末参考文献第 n 条
+       参考文献第 n 条 →  跳到正文里引用它的段落（多处可循环）
+     ========================================================================== */
+
+  /** 按编号取一条参考文献，取不到返回 null */
+  function findRef(n) {
+    const items = (refState.report && refState.report.items) || [];
+    return items.find((it) => it.ref_no === n) || null;
+  }
+
+  /**
+   * 拉取参考文献（同一篇论文只拉一次）。
+   *
+   * 为什么成功后要 notify：列表是渲染时拼进 DOM 的，
+   * 请求回来时必须让阅读器重绘一次才能显示出来。
+   * 失败也要 notify，否则界面会永远停在「正在载入…」。
+   */
+  function ensureReferences(paperId) {
+    if (!paperId || refState.loading) return;
+    if (refState.paperId === paperId && refState.report) return;
+
+    // 离线模式（或测试环境未加载 api.js）时 App.api 不存在。
+    // 这里必须兜住：否则一进阅读器就抛异常，整页渲染直接中断。
+    if (!App.api || typeof App.api.references !== 'function') {
+      refState.loading = false;
+      refState.paperId = null;
+      refState.report = null;
+      refState.error = '离线模式：未连接后端，无法加载参考文献';
+      return;
+    }
+
+    refState.loading = true;
+    refState.error = null;
+    refState.paperId = paperId;
+
+    App.api.references(paperId)
+      .then((report) => {
+        refState.report = report;
+        refState.loading = false;
+        App.store.notify('reader');
+      })
+      .catch((err) => {
+        refState.loading = false;
+        refState.report = null;
+        refState.error = err.message || '请求失败';
+        App.store.notify('reader');
+      });
+  }
+
+  /** 清掉失败状态并重新请求（重试按钮调用） */
+  function retryReferences() {
+    refState.report = null;
+    refState.error = null;
+    refState.loading = false;
+    refState.paperId = null;
+    App.store.notify('reader');   // 触发重绘，refsHtml 会重新发起请求
+  }
+  /** 一条参考文献的 HTML */
+  function refItemHtml(it) {
+    const meta = [it.cited_count ? `被正文引用 ${it.cited_count} 段` : '正文未引用'];
+    if (it.match_method === 'arxiv') meta.push('按 arXiv 编号匹配');
+    else if (it.match_method === 'title') meta.push('按标题匹配');
+    else meta.push('未匹配到库内论文');
+    if (it.arxiv_id) meta.push('arXiv:' + it.arxiv_id);
+
+    return h`
+      <div class="doc-ref" id="ref-${it.ref_no}" data-ref-no="${it.ref_no}">
+        <span class="ref-no mono">[${it.ref_no}]</span>
+        <div class="grow" style="min-width:0">
+          <div class="ref-text">${it.text || '（原文缺失）'}</div>
+          <div class="muted tiny mt-8">${meta.join(' · ')}</div>
+        </div>
+        ${it.cited_count
+          ? U.raw(h`<button class="btn btn-sm btn-ghost" data-action="jump-citing"
+                      data-ref="${it.ref_no}">跳到正文</button>`)
+          : ''}
+      </div>`;
+  }
+
+  /** 正文末尾的参考文献区块（首次进入时先给占位，避免布局跳动） */
+  function refsHtml(paperId) {
+    if (!paperId) return '';
+
+    const stale = refState.paperId !== paperId;
+    if (stale || (!refState.report && !refState.error)) {
+      ensureReferences(paperId);
+    }
+
+    // 先处理失败：否则离线/出错时会一直停在「正在载入…」
+    if (refState.error) {
+      return h`
+        <section class="refs-block" id="refs-block">
+          <div class="refs-head">
+            <span class="refs-title">参考文献</span>
+            <span class="muted tiny">${refState.error}</span>
+            <div class="spacer"></div>
+            <button class="btn btn-sm btn-ghost" data-action="reload-refs">重试</button>
+          </div>
+        </section>`;
+    }
+
+    // 缓存还不属于当前论文（首次进入 / 刚切换论文）：先渲染骨架
+    if (stale || (!refState.report && !refState.error)) {
+      return h`
+        <section class="refs-block" id="refs-block">
+          <div class="refs-head">
+            <span class="refs-title">参考文献</span>
+            <span class="muted tiny">正在载入…</span>
+          </div>
+        </section>`;
+    }
+
+    const report = refState.report;
+    const items = report.items || [];
+    if (!items.length) {
+      return h`
+        <section class="refs-block" id="refs-block">
+          <div class="refs-head">
+            <span class="refs-title">参考文献</span>
+            <span class="muted tiny">这篇论文没有解析出参考文献</span>
+          </div>
+        </section>`;
+    }
+
+    const note = report.note
+      ? U.raw(h`<div class="notice info mb-12"><span>ℹ</span><div>${report.note}</div></div>`)
+      : '';
+
+    return h`
+      <section class="refs-block" id="refs-block">
+        <div class="refs-head">
+          <span class="refs-title">参考文献</span>
+          <span class="muted tiny">共 ${report.total} 条 · 被正文引用 ${report.cited_total} 条</span>
+        </div>
+        ${note}
+        ${U.raw(items.map((it) => refItemHtml(it)).join(''))}
+      </section>`;
+  }
+
+  /**
+   * 从参考文献跳到正文里引用它的段落。
+   *
+   * 「多处引用」用游标轮转：连点「跳到正文」依次走第 1、2、3 处，
+   * 走到底回到第 1 处 —— 比给每条挂一排小圆点更省地方。
+   */
+  function jumpToCiting(n) {
+    const item = findRef(n);
+    if (!item) {
+      App.ui.toast('参考文献还没加载好，请稍候', 'warn', 2000);
+      return;
+    }
+    if (!item.cited_in || !item.cited_in.length) {
+      App.ui.toast('这条参考文献在正文里没有被引用', 'warn', 2200);
+      return;
+    }
+
+    const total = item.cited_in.length;
+    const idx = (citingCursor[n] || 0) % total;
+    citingCursor[n] = (idx + 1) % total;
+
+    const chunk = item.cited_in[idx];
+    const box = U.$('#body-en');
+    const target = box && (U.$('#b' + chunk + '-en', box) || U.$('#b' + chunk + '-zh', box));
+    if (!target) {
+      App.ui.toast('正文里找不到第 ' + chunk + ' 段（可能未渲染）', 'warn', 2400);
+      return;
+    }
+
+    lastCiteScroll = box.scrollTop;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('blk-flash');
+    void target.offsetWidth;
+    target.classList.add('blk-flash');
+    setTimeout(() => target.classList.remove('blk-flash'), 2000);
+
+    U.$$('.ref-back-bar').forEach((b) => b.remove());
+    const bar = document.createElement('div');
+    bar.className = 'ref-back-bar';
+
+    const back = document.createElement('button');
+    back.className = 'btn btn-sm btn-primary';
+    back.textContent = '↩ 回到参考文献 [' + n + ']';
+    back.addEventListener('click', () => { scrollToRef(n); bar.remove(); });
+    bar.appendChild(back);
+
+    if (total > 1) {
+      const next = document.createElement('button');
+      next.className = 'btn btn-sm btn-ghost';
+      next.textContent = '下一处（' + (idx + 2 > total ? 1 : idx + 2) + '/' + total + '）';
+      next.addEventListener('click', () => { bar.remove(); jumpToCiting(n); });
+      bar.appendChild(next);
+    }
+
+    box.appendChild(bar);
+    App.ui.toast('已跳到正文第 ' + (idx + 1) + '/' + total + ' 处引用', 'ok', 1500);
   }
 
   /* ==========================================================================
@@ -562,28 +828,38 @@ window.App = window.App || {};
   function scrollToRef(n) {
     const en = U.$('#body-en');
     if (!en) return;
+
+    const target = U.$('#ref-' + n, en) || U.$('[data-refno="' + n + '"]', en);
+    if (!target) {
+      // 区分三种「找不到」，给用户的提示完全不同
+      if (refState.loading || !refState.report) {
+        App.ui.toast('参考文献正在载入，请稍候再点', 'warn', 2000);
+        ensureReferences(App.store.state.currentPaperId);
+      } else if (refState.report && (refState.report.items || []).length) {
+        App.ui.toast('参考文献里没有编号 [' + n + ']（正文引用了未列出的文献）', 'warn', 2600);
+      } else {
+        App.ui.toast('这篇论文没有解析出参考文献', 'warn', 2400);
+      }
+      return;
+    }
+
     // 记住当前位置，方便「跳回原位」
     lastCiteScroll = en.scrollTop;
-    const target = U.$('[data-refno="' + n + '"]', en);
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      target.classList.add('flash');
-      setTimeout(() => target.classList.remove('flash'), 1600);
-      // 在参考文献处放一个「跳回原位」按钮
-      let back = U.$('.back-to-cite');
-      if (back) back.remove();
-      back = document.createElement('button');
-      back.className = 'btn btn-sm btn-primary back-to-cite';
-      back.textContent = '↩ 跳回原文引用位置';
-      back.addEventListener('click', () => {
-        en.scrollTo({ top: lastCiteScroll || 0, behavior: 'smooth' });
-        back.remove();
-      });
-      const container = U.$('#body-en') || en;
-      container.appendChild(back);
-    } else {
-      App.ui.toast('当前论文未抽取到编号 [' + n + '] 的参考文献', 'warn');
-    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('flash');
+    setTimeout(() => target.classList.remove('flash'), 1600);
+
+    // 在参考文献处放一个「跳回原位」按钮
+    let back = U.$('.back-to-cite');
+    if (back) back.remove();
+    back = document.createElement('button');
+    back.className = 'btn btn-sm btn-primary back-to-cite';
+    back.textContent = '↩ 跳回原文引用位置';
+    back.addEventListener('click', () => {
+      en.scrollTo({ top: lastCiteScroll || 0, behavior: 'smooth' });
+      back.remove();
+    });
+    en.appendChild(back);
   }
 
   /** 打开该论文的解析详情抽屉 */
@@ -598,8 +874,11 @@ window.App = window.App || {};
    *   失败时退回本地术语表，并在弹窗里标「降级」
    */
   async function translateSelection() {
-    const sel = App.store.state.reader.selection;
+    // 优先用内存里的本次划词；测试用例直接写 store，保留回退
+    const sel = pendingSelection || App.store.state.reader.selection;
     if (!sel) return;
+    const text = sel.text;
+    pendingSelection = null;
 
     // 先把弹窗打开，译文位置放「翻译中」，这样点击立刻有反馈
     const modal = App.ui.openModal(h`
@@ -627,15 +906,15 @@ window.App = window.App || {};
         </div>
       </div>`);
 
-    // 选中状态用完了，先把选择框收起来，避免和弹窗叠在一起
-    App.store.set({ reader: Object.assign({}, App.store.state.reader, { selection: null }) }, 'reader');
+    // 只收起浮层，**不写 store**：
+    // 写 store 会触发整页重绘，滚动位置回到顶部、浏览器选区丢失。
+    // 用户要求"选中后保持选中状态"，所以这里什么状态都不动。
     const pop = U.$('#selpop');
     if (pop) pop.classList.add('hidden');
 
     const out = U.$('#sel-zh', modal.mask);
     const badge = U.$('#sel-badge', modal.mask);
     const copyBtn = U.$('#sel-copy', modal.mask);
-    const text = sel.text;
 
     try {
       const res = await App.api.translateText(text, 'en2zh');
@@ -692,7 +971,8 @@ window.App = window.App || {};
 
   /** 复制选中的文本 */
   function copy(el) {
-    const sel = App.store.state.reader.selection;
+    // 与 translateSelection 同源：优先内存里的本次划词，测试写 store 时回退
+    const sel = pendingSelection || App.store.state.reader.selection;
     if (!sel) return;
     if (navigator.clipboard) navigator.clipboard.writeText(sel.text);
     App.ui.toast('已复制到剪贴板', 'ok');
@@ -704,5 +984,6 @@ window.App = window.App || {};
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
+    jumpToCiting,
   };
 })(window.App);
