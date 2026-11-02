@@ -37,11 +37,13 @@ from app.schemas.paper import (
     ParseStateOut,
     UploadResponse,
 )
+from app.schemas.reference import ReferenceItemOut, ReferenceListOut
 from app.schemas.search import EmbedRequest, EmbedResponse
 from app.services import (
     chunk_service,
     paper_service,
     parser_service,
+    reference_service,
     translate_service,
 )
 from app.services.dedupe import DuplicateVerdict
@@ -350,6 +352,39 @@ async def delete_paper(
     await db.commit()
     return Ok(ok=True)
 
+# ---------------------------------------------------------------- 参考文献
+
+
+@router.get(
+    "/{paper_id}/references",
+    response_model=ReferenceListOut,
+    summary="论文参考文献列表",
+)
+async def list_references(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> ReferenceListOut:
+    """返回这篇论文的参考文献，以及每条在正文里的被引位置（双向跳转用）。
+
+    为什么挂在 /papers 下面而不是做成独立资源：
+      参考文献天然属于某篇论文，离开论文没有意义；
+      前端阅读器也只会在打开某篇论文时请求它。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        # 与其它 /papers 接口保持一致：论文不存在一律 404，而不是返回空列表
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    report = await reference_service.build_references(db, paper_id)
+
+    return ReferenceListOut(
+        paper_id=paper_id,
+        total=report.total,
+        cited_total=report.cited_total,
+        citing_style=report.citing_style,
+        note=report.note,
+        items=[ReferenceItemOut(**vars(item)) for item in report.items],
+    )
 
 # ---------------------------------------------------------------- 正文分块
 
