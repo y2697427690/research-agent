@@ -286,6 +286,7 @@ window.App = window.App || {};
         <button class="btn btn-sm btn-ghost btn-icon" data-action="reader-zoom" data-scale="1.15" title="放大">＋</button>
       </div>
       <div class="sep"></div>
+      <button class="btn btn-sm btn-ghost" data-action="export-md" title="把当前论文导出为 Markdown（含元信息、正文、参考文献）">导出 MD</button>
       <button class="btn btn-sm btn-ghost" data-action="goto-publication" data-id="${paperId}">查看解析详情</button>`);
   }
 
@@ -615,6 +616,79 @@ window.App = window.App || {};
     window.__selection_rect = rect;
   }
 
+  /* ==========================================================================
+     5.3.1 导出 Markdown
+     --------------------------------------------------------------------------
+     纯前端实现：把当前论文拼成 Markdown 文本，再用 Blob 下载，不经过服务器。
+     为什么不做后端导出：内容全在页面上，前端拼装零网络开销、也不需要新增接口。
+     ========================================================================== */
+  function exportMarkdown() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    const paper = paperId ? App.data.getPaper(paperId) : null;
+    if (!paper) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const doc = App.data.getDoc(paperId);
+    const lines = [];
+
+    // ---- 标题与元信息表 ----
+    lines.push('# ' + (paper.title || paper.fileName || '论文'), '');
+    lines.push('| 项 | 内容 |', '| --- | --- |');
+    lines.push('| 作者 | ' + (paper.authors && paper.authors.length ? paper.authors.join(', ') : '—') + ' |');
+    lines.push('| 年份 | ' + (paper.year || '—') + ' |');
+    lines.push('| 会议 / 期刊 | ' + (paper.venue || '—') + ' |');
+    if (paper.arxiv) lines.push('| arXiv | ' + paper.arxiv + ' |');
+    lines.push('| 页数 | ' + (paper.pages || '—') + ' |');
+    lines.push('| 解析置信度 | ' + (typeof paper.quality === 'number' ? U.pct(paper.quality, 0) : '—') + ' |');
+    lines.push('', '> 由「科研小助手 Agent」导出 · ' + new Date().toISOString().slice(0, 10), '');
+
+    // ---- 正文 ----
+    if (doc && doc.blocks && doc.blocks.length) {
+      doc.blocks.forEach((b) => {
+        const text = String(b.en || '').trim();
+        if (!text) return;
+        switch (b.type) {
+          case 'h1': lines.push('', '# ' + text, ''); break;
+          case 'h2': lines.push('', '## ' + text, ''); break;
+          case 'h3': lines.push('', '### ' + text, ''); break;
+          case 'list':
+            text.split('\n').forEach((l) => {
+              const item = l.replace(/^•\s*/, '').trim();
+              if (item) lines.push('- ' + item);
+            });
+            lines.push('');
+            break;
+          case 'formula':
+            lines.push('```text', text, '```', '');
+            break;
+          case 'reference':
+            lines.push('[' + (b.refNo || '?') + '] ' + text);
+            break;
+          default:
+            lines.push(text, '');
+        }
+      });
+    } else {
+      lines.push('（正文尚未解析，或该论文只有演示数据）');
+    }
+
+    // ---- 参考文献（若已加载，附带被引次数） ----
+    const report = refState.paperId === paperId ? refState.report : null;
+    if (report && report.items && report.items.length) {
+      lines.push('', '---', '', '## 参考文献', '');
+      report.items.forEach((it) => {
+        lines.push('- **[' + it.ref_no + ']** ' + (it.text || '（原文缺失）'));
+        const sub = ['被正文引用 ' + it.cited_count + ' 段'];
+        if (it.arxiv_id) sub.push('arXiv:' + it.arxiv_id);
+        lines.push('  <sub>' + sub.join(' · ') + '</sub>');
+      });
+      if (report.note) lines.push('', '> ' + report.note);
+    }
+
+    const name = U.safeFileName(paper.title || paper.fileName || 'paper') + '.md';
+    U.download(name, lines.join('\n'), 'text/markdown;charset=utf-8');
+    App.ui.toast('已导出 ' + name, 'ok', 2400);
+  }
   /* ==========================================================================
      5.4 参考文献（双向跳转）
      --------------------------------------------------------------------------
@@ -984,6 +1058,6 @@ window.App = window.App || {};
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
-    jumpToCiting,
+    jumpToCiting, retryReferences, exportMarkdown,
   };
 })(window.App);

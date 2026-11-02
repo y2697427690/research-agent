@@ -212,10 +212,51 @@ window.App = window.App || {};
     }, {});
   }
 
+
+  /* ---------------- 文件下载 ---------------- */
+
+  /**
+   * 在浏览器里“下载”一段文本（不需要后端）。
+   *
+   * 做法：文本包成 Blob → 生成临时 URL → 造一个隐藏的 <a download> 点击它
+   * → 最后撤销 URL 释放内存。这是前端导出文件的通用手法：
+   * 零依赖、不经过服务器；代价是超大文件（上百 MB）会占内存。
+   *
+   * @param {string} filename 保存的文件名（含扩展名）
+   * @param {string} content  文件内容
+   * @param {string} mime     MIME 类型，Markdown 用 text/markdown;charset=utf-8
+   */
+  function download(filename, content, mime) {
+    const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'download.txt';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    // 立刻 revoke 在部分浏览器会让下载中断，放到下一个宏任务里释放
+    setTimeout(() => {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+    return true;
+  }
+
+  /** 把标题变成安全文件名：去掉路径与保留字符、压缩空白、限长 80 */
+  function safeFileName(text) {
+    return String(text || 'untitled')
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80) || 'untitled';
+  }
+
   App.util = {
     $, $$, esc, html, raw, Out, isSafe, delegate,
     bytes, ago, date, pct, num, clip,
     sleep, mockAsync, streamText,
     hash, seeded, clone, debounce, uid, times, groupBy,
+    download, safeFileName,
   };
 })(window.App);

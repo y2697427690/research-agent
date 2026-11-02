@@ -720,6 +720,26 @@ t('阅读器：有数据时渲染参考文献条目并标注引用次数', async
     App.api = had;
   }
 });
+t('阅读器：导出 Markdown 含标题、元信息与正文', () => {
+  restore();
+  App.store.actions.openPaper('p-attention-v7');
+  let captured = null;
+  const real = App.util.download;
+  App.util.download = (name, content) => { captured = { name, content }; return true; };
+  try {
+    App.views.reader.exportMarkdown();
+  } finally {
+    App.util.download = real;
+  }
+  if (!captured) throw new Error('没有触发下载');
+  if (!/\.md$/.test(captured.name)) throw new Error('文件名应以 .md 结尾：' + captured.name);
+  ['# ', '| 作者 |', '解析置信度', 'Multi-Head Attention'].forEach((k) => {
+    if (captured.content.indexOf(k) === -1) throw new Error('导出内容缺少：' + k);
+  });
+  if (captured.content.split('\n').length < 20) {
+    throw new Error('导出内容过短，可能没拼上正文');
+  }
+});
 t('阅读器：中英对照模式出现两个正文面板', () => {
   restore();
   App.store.actions.openPaper('p-attention-v7');
