@@ -283,6 +283,26 @@ window.App = window.App || {};
       return postJson('/discover/ingest', { arxiv_id: arxivId, force: !!force }, 90000);
     },
 
+    /* ---- 订阅（关键词定期追踪） ---- */
+    subscriptions() { return get('/subscriptions'); },
+
+    createSubscription(keyword, category) {
+      return postJson('/subscriptions', {
+        keyword: keyword,
+        category: category || null,
+        max_results: 20,
+      });
+    },
+
+    deleteSubscription(id) {
+      return request('/subscriptions/' + encodeURIComponent(id), { method: 'DELETE' });
+    },
+
+    /** 立即检查一次：会真的请求 arXiv，1~3 秒，超时给 90 秒 */
+    checkSubscription(id) {
+      return postJson('/subscriptions/' + encodeURIComponent(id) + '/check', {}, 90000);
+    },
+
     /* ---- 引用图谱 ---- */
     graph() { return get('/graph'); },
     /** 重建引用关系：需要重新解析 PDF，约 1~2 秒（6 篇），只在用户点击时调用 */

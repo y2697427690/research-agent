@@ -36,11 +36,14 @@ window.App = window.App || {};
       </div>
 
       ${searchCard(d)}
+      ${subscriptionCard(d)}
       ${resultArea(d)}
       ${footNote()}
     `;
 
     bind(el);
+    // 首次进入拉一次订阅（失败也只是显示错误，不影响搜索）
+    if (!d.subs || !d.subs.loaded) App.store.actions.loadSubscriptions();
   }
 
   /* ---------------- 搜索区 ---------------- */
@@ -150,6 +153,72 @@ window.App = window.App || {};
       </article>`);
   }
 
+  /* ---------------- 我的订阅 ---------------- */
+  /**
+   * 订阅区块：关键词 + 分类，系统每天 09:00 自动检查一次。
+   *
+   * 为什么把「立即检查」做成按钮：定时任务是后台行为，用户看不到，
+   * 给他一个立刻能验证的入口，才知道这个功能是活的。
+   */
+  function subscriptionCard(d) {
+    const subs = d.subs || { items: [], loading: false, error: null, checking: {}, removing: {} };
+    const items = subs.items || [];
+
+    const list = items.length
+      ? U.raw(items.map((s) => h`
+          <div class="sub-item" data-sub="${s.id}">
+            <div class="row gap-8 wrap" style="align-items:baseline">
+              <span style="font-weight:620">${s.keyword}</span>
+              ${s.category ? h`<span class="badge badge-outline mono">${s.category}</span>` : ''}
+              <span class="muted tiny">累计 ${s.hit_count} 条</span>
+              <span class="spacer"></span>
+              <span class="muted tiny">${s.last_checked_at ? '上次检查 ' + U.ago(s.last_checked_at) : '尚未检查'}</span>
+              <button class="btn btn-sm btn-ghost" data-action="check-subscription" data-id="${s.id}"
+                ${subs.checking[s.id] ? 'disabled' : ''}>
+                ${subs.checking[s.id] ? '检查中…' : '立即检查'}
+              </button>
+              <button class="btn btn-sm btn-ghost" data-action="delete-subscription" data-id="${s.id}"
+                ${subs.removing[s.id] ? 'disabled' : ''}>删除</button>
+            </div>
+            ${(s.latest && s.latest.length) ? U.raw(h`
+              <div class="sub-hits">
+                ${U.raw(s.latest.map((hit) => h`
+                  <div class="sub-hit">
+                    <span class="mono tiny muted">arXiv:${hit.arxiv_id}</span>
+                    <span class="ellipsis" style="min-width:0">${hit.title}</span>
+                    ${hit.in_library
+                      ? h`<span class="badge badge-ok">已在库</span>`
+                      : h`<button class="btn btn-sm btn-ghost" data-action="discover-ingest"
+                           data-id="${hit.arxiv_id}${hit.version || ''}">入库并解析</button>`}
+                  </div>`).join(''))}
+              </div>`) : h`<div class="muted tiny mt-8">还没有抓到新论文，点「立即检查」试试。</div>`}
+          </div>`).join(''))
+      : h`<div class="disc-state">还没有订阅。输入一个关键词（如 speculative decoding），
+           系统每天 09:00 自动帮你找新论文。</div>`;
+
+    return App.ui.Out(h`
+      <div class="card mb-16">
+        <div class="card-head">
+          <div class="card-title">我的订阅</div>
+          <div class="spacer"></div>
+          <span class="muted tiny">每天 09:00 自动检查（arXiv 限速，串行执行）</span>
+        </div>
+        <div class="card-body">
+          <div class="row gap-8 wrap mb-12">
+            <input class="input" id="sub-keyword" placeholder="关键词，如 speculative decoding"
+              style="flex:1;min-width:220px" ${subs.adding ? 'disabled' : ''} />
+            <input class="input mono" id="sub-category" placeholder="分类（选填）cs.CL"
+              style="width:170px" ${subs.adding ? 'disabled' : ''} />
+            <button class="btn btn-primary" data-action="add-subscription" ${subs.adding ? 'disabled' : ''}>
+              ${subs.adding ? '添加中…' : '添加订阅'}
+            </button>
+          </div>
+          ${subs.error ? h`<div class="muted small mb-8">${subs.error}</div>` : ''}
+          ${subs.loading && !items.length ? h`<div class="muted small">正在载入订阅…</div>` : list}
+        </div>
+      </div>`);
+  }
+
   /* ---------------- 底部说明：如实交代未实现的部分 ---------------- */
   function footNote() {
     return App.ui.Out(h`
@@ -186,5 +255,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.discover = { render, searchCard, resultArea, itemCard, footNote };
+  App.views.discover = { render, searchCard, subscriptionCard, resultArea, itemCard, footNote };
 })(window.App);

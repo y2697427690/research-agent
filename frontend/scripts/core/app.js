@@ -245,6 +245,15 @@ window.App = window.App || {};
       case 'discover-search': S.discoverSearch(); break;
       case 'discover-sort': S.setDiscoverSort(data.sort); break;
       case 'discover-ingest': S.discoverIngest(data.id); break;
+      // ---- 订阅 ----
+      case 'add-subscription': {
+        const kw = U.$('#sub-keyword');
+        const cat = U.$('#sub-category');
+        S.addSubscription(kw ? kw.value : '', cat ? cat.value : '');
+        break;
+      }
+      case 'check-subscription': S.checkSubscription(data.id); break;
+      case 'delete-subscription': S.removeSubscription(data.id); break;
       case 'vote-up': S.vote(data.id, 'up'); break;
       case 'vote-down': S.vote(data.id, 'down'); break;
 

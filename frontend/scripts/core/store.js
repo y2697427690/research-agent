@@ -81,6 +81,16 @@ window.App = window.App || {};
       effectiveQuery: '',    // 实际发给 arXiv 的语句，让用户理解「为什么搜到这些」
       items: [],
       ingesting: {},         // arxivId -> true，表示该条正在下载入库
+      // ---- 订阅 ----
+      subs: {
+        items: [],           // 订阅列表（后端 SubscriptionOut[]）
+        loading: false,
+        error: null,
+        adding: false,       // 正在添加，按钮置灰防连点
+        loaded: false,        // 是否已尝试加载过（失败也算，避免反复重试）
+        checking: {},        // subscriptionId -> true，正在检查
+        removing: {},        // subscriptionId -> true，正在删除
+      },
     },
 
     // ---- 写作助手 ----
@@ -397,6 +407,97 @@ window.App = window.App || {};
     removeUpload(id) {
       state.uploads = state.uploads.filter((u) => u.id !== id);
       notify('uploads');
+    },
+
+    /* ===== 订阅 ===== */
+    /**
+     * 拉订阅列表。
+     * 放在 store 而不是视图里：发现页每次重绘都会重新渲染订阅卡片，
+     * 数据放视图局部变量会随重绘丢失。
+     */
+    async loadSubscriptions() {
+      const subs = state.discover.subs;
+      if (subs.loading) return;
+      subs.loading = true;
+      subs.error = null;
+      notify('discover');
+      try {
+        const data = await App.api.subscriptions();
+        subs.items = data.items || [];
+      } catch (err) {
+        subs.error = err.message || '订阅加载失败';
+      } finally {
+        subs.loading = false;
+        subs.loaded = true;   // 成功或失败都算「试过了」，防止渲染→请求→渲染的死循环
+        notify('discover');
+      }
+    },
+
+    async addSubscription(keyword, category) {
+      const subs = state.discover.subs;
+      const q = String(keyword || '').trim();
+      if (!q) {
+        App.ui.toast('请先输入关键词', 'warn', 2000);
+        return null;
+      }
+      if (subs.adding) return null;
+      subs.adding = true;
+      notify('discover');
+      try {
+        await App.api.createSubscription(q, category);
+        App.ui.toast('已添加订阅：' + q, 'ok');
+        await actions.loadSubscriptions();
+        return true;
+      } catch (err) {
+        App.ui.toast('添加失败：' + err.message, 'error', 3600);
+        return null;
+      } finally {
+        subs.adding = false;
+        notify('discover');
+      }
+    },
+
+    async removeSubscription(id) {
+      const subs = state.discover.subs;
+      if (!id || subs.removing[id]) return;
+      subs.removing[id] = true;
+      notify('discover');
+      try {
+        await App.api.deleteSubscription(id);
+        subs.items = subs.items.filter((s) => s.id !== id);
+        App.ui.toast('已删除订阅', 'ok');
+      } catch (err) {
+        App.ui.toast('删除失败：' + err.message, 'error', 3600);
+      } finally {
+        delete subs.removing[id];
+        notify('discover');
+      }
+    },
+
+    /**
+     * 立即检查一次。
+     * 这个动作用户会盯着看（1~3 秒），所以按 id 记「检查中」，
+     * 只让那一个按钮转圈，而不是整页禁用。
+     */
+    async checkSubscription(id) {
+      const subs = state.discover.subs;
+      if (!id || subs.checking[id]) return;
+      subs.checking[id] = true;
+      notify('discover');
+      try {
+        const res = await App.api.checkSubscription(id);
+        App.ui.toast(
+          res.added > 0 ? '检查完成：新增 ' + res.added + ' 条' : '检查完成：没有新论文',
+          res.added > 0 ? 'ok' : 'warn',
+          3000
+        );
+        await actions.loadSubscriptions();
+      } catch (err) {
+        App.ui.toast('检查失败：' + err.message, 'error', 4000);
+      } finally {
+        delete subs.checking[id];
+        notify('discover');
+      }
     },
 
     /* ===== 文库 ===== */

@@ -1242,6 +1242,54 @@ t('发现：已撤稿的论文不给入库按钮，改为说明原因', () => {
   mustText('无法入库');
 });
 
+t('发现：我的订阅区块在空状态下给出说明', () => {
+  restore();
+  // 直接注入「已尝试加载且为空」，避免走真实请求
+  App.store.state.discover.subs = {
+    items: [], loading: false, error: null, loaded: true, adding: false,
+    checking: {}, removing: {},
+  };
+  renderView('discover');
+  mustText('我的订阅');
+  mustText('还没有订阅');
+  mustFind('[data-action="add-subscription"]');
+});
+
+t('发现：订阅卡片显示关键词、命中数与已在库标记', () => {
+  restore();
+  App.store.state.discover.subs = {
+    items: [{
+      id: 'sub_1', keyword: 'speculative decoding', category: 'cs.CL',
+      max_results: 20, enabled: true, created_at: '2026-11-01T00:00:00Z',
+      last_checked_at: '2026-11-03T00:00:00Z', hit_count: 12,
+      latest: [
+        { id: 'h1', arxiv_id: '2510.00001', version: 'v1', title: 'Fast Decoding',
+          authors: 'A, B', summary: '', published: '2026-10-01',
+          abs_url: '', pdf_url: '', in_library: true, found_at: '2026-11-03T00:00:00Z' },
+        { id: 'h2', arxiv_id: '2510.00002', version: 'v2', title: 'Another Paper',
+          authors: 'C', summary: '', published: '2026-10-02',
+          abs_url: '', pdf_url: '', in_library: false, found_at: '2026-11-03T00:00:00Z' },
+      ],
+    }],
+    loading: false, error: null, loaded: true, adding: false,
+    checking: {}, removing: {},
+  };
+
+  // 断言组件输出（极简 DOM 解析这层嵌套模板会丢节点，不能用 querySelector）
+  const raw = String(App.views.discover.subscriptionCard(App.store.state.discover));
+  [
+    'speculative decoding', 'cs.CL', '累计 12 条', '已在库',
+    'Fast Decoding', 'Another Paper',
+    'data-action="check-subscription"', 'data-action="delete-subscription"',
+  ].forEach((k) => {
+    if (raw.indexOf(k) === -1) throw new Error('订阅卡片缺少：' + k);
+  });
+  // 未在库的那条要给「入库并解析」，且 id 必须带版本号（否则入库会拿错版本）
+  if (raw.indexOf('data-id="2510.00002v2"') === -1) {
+    throw new Error('未在库的命中项应给出带版本号的入库按钮');
+  }
+});
+
 t('发现：底部如实说明尚未实现的能力', () => {
   restore();
   renderView('discover');
