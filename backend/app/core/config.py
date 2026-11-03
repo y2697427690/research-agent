@@ -81,6 +81,19 @@ class Settings(BaseSettings):
     # 向量维度不硬编码：首次调用后从响应里读出来，避免模型换了维度就崩
     embedding_dim: int | None = None
 
+    # ------------------------------------------------------------------
+    # 订阅定时检查
+    # ------------------------------------------------------------------
+    # 默认关闭：真正的定时抓取只应在部署环境开启。
+    # 如果默认开着，本地开发与测试每次启动都会去请求 arXiv，
+    # 既慢又容易触发限流（测试里更难排查）。
+    subscription_enabled: bool = False
+    # 每天几点跑（24 小时制，用服务器本地时区）
+    subscription_check_hour: int = 9
+    # 同一订阅两次抓取的最小间隔。20 小时而不是 24：给重启/抖动留余量，
+    # 否则某天晚跑 2 小时就会跳过一整天。
+    subscription_min_interval_hours: int = 20
+
     @property
     def embeddings_enabled(self) -> bool:
         """是否配置了嵌入模型。未配置时检索走纯 BM25。"""

@@ -39,7 +39,15 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("数据库表已就绪")
 
+    # 订阅定时检查：默认关闭，线上用 APP_SUBSCRIPTION_ENABLED=true 打开。
+    # 关闭时 start_scheduler() 直接返回 None，不会产生任何后台任务。
+    from app.core.scheduler import shutdown_scheduler, start_scheduler
+
+    start_scheduler()
+
     yield
+
+    shutdown_scheduler()
     await engine.dispose()
     logger.info("服务已停止")
 
