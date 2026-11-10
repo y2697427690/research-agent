@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views/qa.js — 知识问答（单篇 / 多篇论文，答案必带出处）
    ----------------------------------------------------------------------------
    对应需求 1.2「知识问答」：
@@ -173,48 +173,144 @@ window.App = window.App || {};
   /* ==========================================================================
      2. 欢迎页 + 示例问题
      ========================================================================== */
-  /* ---------------- Agent 自主调用面板 ---------------- */
+  /* ---------------- Agent 自主调用 ---------------- */
   /**
-   * 展示「模型自己选工具」的轨迹。
-   * 每一步都显示 thought（为什么调）+ 工具名 + 是否成功，
-   * 最后给回答 —— 评审能看到决策过程，而不是只看到一个答案。
+   * 轨迹渲染（弹窗里用）。
+   *
+   * 每一步一行：工具徽标 + 思考 + 可展开的观测结果。
+   * 观测默认折叠 —— 20 条检索片段铺开会淹掉思路，想看细节再展开。
    */
+  function agentBody(st) {
+    const a = (st.qa && st.qa.agent) || null;
+    if (!a) return h`<div class="muted small">输入问题后点「执行」，模型会自己决定调哪个工具、调几次。</div>`;
+    if (a.loading) {
+      return h`<div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">Agent 执行中…（通常 3~8 秒）</span></div>`;
+    }
+    if (a.error) return h`<div class="notice warn"><span>!</span><div>执行失败：${a.error}</div></div>`;
+
+    const steps = (a.steps || []).map((s) => h`
+      <div class="agent-step">
+        <div class="row gap-8" style="align-items:center">
+          <span class="badge mono ${s.tool === 'final' ? 'badge-ok' : s.ok ? 'badge-outline' : 'badge-danger'}">${s.tool || '格式'}</span>
+          <span class="muted tiny">第 ${s.index} 步</span>
+        </div>
+        <div class="agent-thought">${s.thought || '（无思考）'}</div>
+        ${s.tool && s.tool !== 'final' ? U.raw(h`
+          <details class="agent-obs">
+            <summary class="muted tiny">查看观测结果</summary>
+            <pre>${s.observation || ''}</pre>
+          </details>`) : ''}
+      </div>`).join('');
+
+    return h`
+      <div class="agent-answer">
+        <div class="muted tiny mb-8">回答</div>
+        <div class="abstract-zh" style="line-height:1.9">${a.answer || ''}</div>
+      </div>
+      <div class="muted tiny mt-16 mb-8">执行轨迹（${(a.steps || []).length} 步，用到 ${(a.tools || []).length} 个工具）</div>
+      ${U.raw(steps)}`;
+  }
+
+  /** 侧栏入口：只放一个按钮，真正的面板在弹窗里 */
   function agentCard(st) {
     const a = st.qa.agent || null;
-    let body = '';
-    if (!a) {
-      body = h`<div class="muted tiny">模型会自己决定调哪个工具、调几次（检索 / 列论文 / 图谱 / arXiv / 翻译）。</div>`;
-    } else if (a.loading) {
-      body = h`<div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">Agent 执行中…</span></div>`;
-    } else if (a.error) {
-      body = h`<div class="muted small">执行失败：${a.error}</div>`;
-    } else {
-      const steps = (a.steps || []).map((s) => h`
-        <div class="row gap-6 mb-8" style="align-items:flex-start">
-          <span class="badge ${s.tool === 'final' ? 'badge-ok' : s.ok ? 'badge-outline' : 'badge-danger'} mono">${s.tool || '格式'}</span>
-          <span class="grow muted tiny" style="min-width:0">${U.clip(s.thought || s.observation || '', 70)}</span>
-        </div>`).join('');
-      body = h`
-        <div class="mb-8">${U.raw(steps)}</div>
-        <div class="abstract-zh" style="line-height:1.8">${a.answer || ''}</div>`;
-    }
-
+    const hint = a && a.answer
+      ? '已执行 ' + (a.steps || []).length + ' 步，点开看轨迹'
+      : '工具注册表 · 模型自主多步调用';
     return App.ui.Out(h`
       <div class="card mb-12">
         <div class="card-head">
           <div class="card-title">Agent 自主调用</div>
           <div class="spacer"></div>
-          <span class="muted tiny">工具注册表 · 多步</span>
+          <span class="muted tiny">${(a && a.tools) ? a.tools.length + ' 个工具' : '多步'}</span>
         </div>
         <div class="card-body tight">
-          <div class="row gap-6 mb-8">
-            <input class="input" id="agent-q" placeholder="如：库里哪篇是奠基工作？"
-              style="flex:1;min-width:0" />
-            <button class="btn btn-sm btn-primary" data-action="agent-run">执行</button>
-          </div>
-          ${U.raw(body)}
+          <div class="muted tiny mb-8">${hint}</div>
+          <button class="btn btn-sm btn-primary" style="width:100%" data-action="agent-open">打开 Agent 面板</button>
         </div>
       </div>`);
+  }
+
+  /** 打开弹窗（宽 760px，专门给轨迹留空间） */
+  function openAgentPanel() {
+    const modal = App.ui.openModal(h`
+      <div class="modal" style="width:760px;max-width:96vw">
+        <div class="modal-head">
+          <div class="modal-title">Agent 自主调用</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline">工具注册表 · JSON Schema</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="row gap-8 mb-12">
+            <input class="input" id="agent-q" placeholder="如：库里哪篇是奠基工作？它的核心贡献是什么？"
+              style="flex:1" />
+            <button class="btn btn-primary" data-action="agent-run">执行</button>
+          </div>
+          <div class="agent-body" id="agent-body">${App.util.raw(agentBody(App.store.state))}</div>
+        </div>
+      </div>`);
+
+    // 弹窗挂在 document.body 上，不在全局事件委托（nav/topbar/view）范围内，
+    // 所以这里的按钮必须自己绑 —— 否则点了毫无反应（真实反馈过）。
+    const input = U.$('#agent-q', modal.mask);
+    const runBtn = U.$('[data-action="agent-run"]', modal.mask);
+    const body = U.$('#agent-body', modal.mask);
+
+    /**
+     * 执行一次。
+     *
+     * 关键：runAgent 一进来就同步把状态置为 loading（然后才 await 网络），
+     * 所以调用后**立刻**重绘一次就能看到「执行中…」，不必等请求回来。
+     * 之前只在 .then 里刷新，用户点了按钮后 3~8 秒毫无反馈，以为卡死了。
+     */
+    const fire = () => {
+      const q = input ? input.value : '';
+      if (!String(q).trim()) {
+        App.ui.toast('请先输入问题', 'warn', 2000);
+        return;
+      }
+
+      // 按钮进入忙碌态：防连点 + 明确告知正在跑
+      if (runBtn) {
+        runBtn.disabled = true;
+        runBtn.textContent = '执行中…';
+      }
+
+      const p = App.store.actions.runAgent(q);
+      // 同步阶段已写入 loading，这里马上画出来
+      if (body) body.innerHTML = agentBody(App.store.state);
+
+      // runAgent 在「问题为空」时返回 null，这里兜一下，避免 .then 报错
+      Promise.resolve(p).then(() => {
+        if (body) body.innerHTML = agentBody(App.store.state);
+      }).finally(() => {
+        if (runBtn) {
+          runBtn.disabled = false;
+          runBtn.textContent = '执行';
+        }
+      });
+    };
+
+    if (runBtn) runBtn.addEventListener('click', fire);
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          fire();
+        }
+      });
+      // 打开即聚焦，省一次点击
+      setTimeout(() => { if (input.focus) input.focus(); }, 30);
+    }
+
+    return modal;
+  }
+
+  /** 执行完刷新弹窗内容（弹窗不受页面重绘影响，要手动同步一次） */
+  function refreshAgentPanel() {
+    const box = U.$('#agent-body');
+    if (box) box.innerHTML = agentBody(App.store.state);
   }
 
   function welcomeHtml() {
@@ -507,5 +603,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard };
+  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard, agentBody, openAgentPanel, refreshAgentPanel };
 })(window.App);

@@ -56,10 +56,21 @@ async def _search_library(db: AsyncSession, query: str, top_k: int = 6) -> Any:
 async def _list_papers(db: AsyncSession, limit: int = 20) -> Any:
     rows = (
         await db.execute(
-            select(Paper.id, Paper.title, Paper.year).order_by(Paper.added_at.desc()).limit(int(limit))
+            select(Paper.id, Paper.title, Paper.year, Paper.file_name)
+            .order_by(Paper.added_at.desc())
+            .limit(int(limit))
         )
     ).all()
-    return [{"id": r[0], "title": (r[1] or "")[:80], "year": r[2]} for r in rows]
+    # 有些论文没有抽取到标题（扫描件 / 解析失败），回退成文件名：
+    # 否则模型看到的是一排空标题，会误判"库里没有这篇论文"。
+    return [
+        {
+            "id": r[0],
+            "title": (r[1] or r[3] or f"未命名（{r[0][:8]}）")[:80],
+            "year": r[2],
+        }
+        for r in rows
+    ]
 
 
 async def _graph_insights(db: AsyncSession, limit: int = 8) -> Any:

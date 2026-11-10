@@ -217,9 +217,10 @@ window.App = window.App || {};
 
       /* ---- 问答 ---- */
       case 'qa-scope': S.setQaScope(data.scope); break;
+      case 'agent-open': App.views.qa.openAgentPanel(); break;
       case 'agent-run': {
         const box = U.$('#agent-q');
-        S.runAgent(box ? box.value : '');
+        S.runAgent(box ? box.value : '').then(() => App.views.qa.refreshAgentPanel());
         break;
       }
       case 'qa-toggle-paper': S.toggleQaPaper(data.id); break;

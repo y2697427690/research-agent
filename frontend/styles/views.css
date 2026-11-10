@@ -1050,3 +1050,30 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
   box-shadow: var(--sh-2);
   width: fit-content;
 }
+
+/* ---- Agent 轨迹（弹窗内） ---- */
+.agent-body { max-height: 56vh; overflow: auto; padding-right: 4px; }
+.agent-step { padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.agent-step:last-child { border-bottom: none; }
+.agent-thought { margin-top: 6px; font-size: 13px; line-height: 1.7; color: var(--text-1); }
+.agent-obs { margin-top: 6px; }
+.agent-obs summary { cursor: pointer; }
+.agent-obs pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow: auto;
+}
+/* 回答单独成块：左侧品牌色竖线，和轨迹区分开 */
+.agent-answer {
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border-radius: 10px;
+  border-left: 3px solid var(--brand);
+}

@@ -479,13 +479,15 @@ t('问答：Agent 面板展示每一步工具与最终回答', () => {
   el.innerHTML = '';
   App.views.qa.render(el);
 
-  const raw = String(App.views.qa.agentCard(App.store.state));
-  ['list_papers', 'search_library', '先看库里有什么', 'Agent 自主调用', 'Attention Is All You Need']
+  // 轨迹在弹窗里，用纯函数断言内容（极简 DOM 跑不动 openModal）
+  const raw = String(App.views.qa.agentBody(App.store.state));
+  ['list_papers', 'search_library', '先看库里有什么', 'Attention Is All You Need', '执行轨迹']
     .forEach((k) => {
-      if (raw.indexOf(k) === -1) throw new Error('Agent 面板缺少：' + k);
+      if (raw.indexOf(k) === -1) throw new Error('Agent 轨迹缺少：' + k);
     });
-  mustFind('#agent-q');
-  mustFind('[data-action="agent-run"]');
+  // 侧栏只留入口按钮
+  const card = String(App.views.qa.agentCard(App.store.state));
+  if (card.indexOf('打开 Agent 面板') === -1) throw new Error('侧栏缺少「打开 Agent 面板」按钮');
 });
 
 t('问答：欢迎页含需求文档里的 5 道例题', () => {
