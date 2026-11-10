@@ -308,6 +308,14 @@ window.App = window.App || {};
       return postJson('/subscriptions/' + encodeURIComponent(id) + '/check', {}, 90000);
     },
 
+    /* ---- Agent ---- */
+    agentTools() { return get('/agent/tools'); },
+
+    /** Agent 多步执行：返回 steps（thought/tool/args/observation）+ answer */
+    agentRun(question, maxSteps) {
+      return postJson('/agent/run', { question: question, max_steps: maxSteps || 4 }, 120000);
+    },
+
     /* ---- 引用图谱 ---- */
     graph() { return get('/graph'); },
 

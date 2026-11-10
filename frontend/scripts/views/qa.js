@@ -87,6 +87,8 @@ window.App = window.App || {};
             </div>
           </div>
 
+          ${agentCard(st)}
+
           <div class="card">
             <div class="card-head">
               <div class="card-title">会话</div>
@@ -171,6 +173,50 @@ window.App = window.App || {};
   /* ==========================================================================
      2. 欢迎页 + 示例问题
      ========================================================================== */
+  /* ---------------- Agent 自主调用面板 ---------------- */
+  /**
+   * 展示「模型自己选工具」的轨迹。
+   * 每一步都显示 thought（为什么调）+ 工具名 + 是否成功，
+   * 最后给回答 —— 评审能看到决策过程，而不是只看到一个答案。
+   */
+  function agentCard(st) {
+    const a = st.qa.agent || null;
+    let body = '';
+    if (!a) {
+      body = h`<div class="muted tiny">模型会自己决定调哪个工具、调几次（检索 / 列论文 / 图谱 / arXiv / 翻译）。</div>`;
+    } else if (a.loading) {
+      body = h`<div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">Agent 执行中…</span></div>`;
+    } else if (a.error) {
+      body = h`<div class="muted small">执行失败：${a.error}</div>`;
+    } else {
+      const steps = (a.steps || []).map((s) => h`
+        <div class="row gap-6 mb-8" style="align-items:flex-start">
+          <span class="badge ${s.tool === 'final' ? 'badge-ok' : s.ok ? 'badge-outline' : 'badge-danger'} mono">${s.tool || '格式'}</span>
+          <span class="grow muted tiny" style="min-width:0">${U.clip(s.thought || s.observation || '', 70)}</span>
+        </div>`).join('');
+      body = h`
+        <div class="mb-8">${U.raw(steps)}</div>
+        <div class="abstract-zh" style="line-height:1.8">${a.answer || ''}</div>`;
+    }
+
+    return App.ui.Out(h`
+      <div class="card mb-12">
+        <div class="card-head">
+          <div class="card-title">Agent 自主调用</div>
+          <div class="spacer"></div>
+          <span class="muted tiny">工具注册表 · 多步</span>
+        </div>
+        <div class="card-body tight">
+          <div class="row gap-6 mb-8">
+            <input class="input" id="agent-q" placeholder="如：库里哪篇是奠基工作？"
+              style="flex:1;min-width:0" />
+            <button class="btn btn-sm btn-primary" data-action="agent-run">执行</button>
+          </div>
+          ${U.raw(body)}
+        </div>
+      </div>`);
+  }
+
   function welcomeHtml() {
     const st = App.store.state;
     const examples = st.qa.scope === 'single' ? EXAMPLES_SINGLE : EXAMPLES_MULTI;
@@ -461,5 +507,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.qa = { render, ask, sendFromInput, jumpEvidence };
+  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard };
 })(window.App);

@@ -463,6 +463,31 @@ t('图谱：SVG、节点、引用箭头都画出来了', () => {
   mustFind('#gside');
 });
 
+t('问答：Agent 面板展示每一步工具与最终回答', () => {
+  restore();
+  // 直接注入一次执行结果（不联网）
+  App.store.state.qa.agent = {
+    steps: [
+      { index: 1, thought: '先看库里有什么', tool: 'list_papers', args: {}, ok: true, observation: '[]' },
+      { index: 2, thought: '确认是这篇', tool: 'search_library', args: { query: 'Transformer' }, ok: true, observation: '[]' },
+      { index: 3, thought: '可以回答', tool: 'final', args: {}, ok: true, observation: '《Attention》' },
+    ],
+    answer: '库内提出 Transformer 的是《Attention Is All You Need》',
+    tools: ['list_papers', 'search_library'],
+  };
+  App.store.state.route = 'qa';
+  el.innerHTML = '';
+  App.views.qa.render(el);
+
+  const raw = String(App.views.qa.agentCard(App.store.state));
+  ['list_papers', 'search_library', '先看库里有什么', 'Agent 自主调用', 'Attention Is All You Need']
+    .forEach((k) => {
+      if (raw.indexOf(k) === -1) throw new Error('Agent 面板缺少：' + k);
+    });
+  mustFind('#agent-q');
+  mustFind('[data-action="agent-run"]');
+});
+
 t('问答：欢迎页含需求文档里的 5 道例题', () => {
   restore();
   App.store.actions.setQaScope('single');

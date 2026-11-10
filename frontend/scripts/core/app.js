@@ -217,6 +217,11 @@ window.App = window.App || {};
 
       /* ---- 问答 ---- */
       case 'qa-scope': S.setQaScope(data.scope); break;
+      case 'agent-run': {
+        const box = U.$('#agent-q');
+        S.runAgent(box ? box.value : '');
+        break;
+      }
       case 'qa-toggle-paper': S.toggleQaPaper(data.id); break;
       case 'qa-ask-preset': App.views.qa.ask(data.q); break;
       case 'qa-send': App.views.qa.sendFromInput(); break;

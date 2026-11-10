@@ -53,6 +53,7 @@ window.App = window.App || {};
       // 8 能命中需要的训练细节段落，再往上答案不再变化。
       topK: 8,
       showEvidence: true,      // 是否展示引用原文
+      agent: null,             // { loading, steps, answer, error } Agent 轨迹
     },
 
     // ---- 图谱 ----
@@ -425,6 +426,27 @@ window.App = window.App || {};
         state.graph.survey = { error: err.message || '生成失败' };
       } finally {
         notify('graph');
+      }
+    },
+
+    /**
+     * 跑一次 Agent：一次请求拿回整条轨迹。
+     * 失败也把 error 写进状态，面板显示原因而不是静默不动。
+     */
+    async runAgent(question) {
+      const q = String(question || '').trim();
+      if (!q) { App.ui.toast('请先输入问题', 'warn', 2000); return null; }
+      state.qa.agent = { loading: true };
+      notify('qa');
+      try {
+        const res = await App.api.agentRun(q, 4);
+        state.qa.agent = { steps: res.steps || [], answer: res.answer, tools: res.used_tools || [] };
+        return res;
+      } catch (err) {
+        state.qa.agent = { error: err.message || '执行失败' };
+        return null;
+      } finally {
+        notify('qa');
       }
     },
 

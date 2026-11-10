@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    agent,
     discover,
     graph,
     health,
@@ -14,6 +15,7 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(agent.router)
 api_router.include_router(papers.router)
 api_router.include_router(search.router)
 api_router.include_router(qa.router)
