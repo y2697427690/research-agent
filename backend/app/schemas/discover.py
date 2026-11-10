@@ -24,6 +24,9 @@ class ArxivItemOut(BaseModel):
     in_library: bool = Field(
         False, description="该编号是否已在库中（前端据此把按钮显示为「已在库」）"
     )
+    has_code: bool = Field(
+        False, description="摘要/备注里是否提到代码仓库（GitHub 等）"
+    )
     withdrawn: bool = Field(
         False,
         description="arXiv 已撤稿：没有 PDF 可下载，前端应禁用「入库」按钮并说明原因",
@@ -67,3 +70,16 @@ class IngestResponse(BaseModel):
     paper: PaperOut | None = None
     duplicate: DuplicateInfo | None = None
     message: str = ""
+
+
+class DiscoverReasonRequest(BaseModel):
+    """请求一条推荐理由。"""
+
+    title: str = Field(..., min_length=1, max_length=400, description="候选论文标题")
+    summary: str = Field("", max_length=4000, description="候选论文摘要")
+    arxiv_id: str = Field("", max_length=64, description="arXiv 编号，仅用于回显")
+
+
+class DiscoverReasonResponse(BaseModel):
+    reason: str = Field("", description="一句推荐理由（40~80 字）")
+    related: list[str] = Field(default_factory=list, description="与之相关的库内论文标题")

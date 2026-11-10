@@ -132,6 +132,7 @@ window.App = window.App || {};
           <div class="disc-title-row">
             <a class="disc-title" href="${it.absUrl || '#'}" target="_blank" rel="noopener">${it.title}</a>
             <span class="badge badge-outline mono">arXiv:${it.arxivId}${it.version || ''}</span>
+            ${it.hasCode ? U.raw(h`<span class="badge badge-ok" title="摘要中提到代码仓库，较易复现">含代码</span>`) : ''}
           </div>
           <div class="disc-meta">${meta}</div>
           ${it.comment ? U.raw(h`<div class="disc-comment">${U.clip(it.comment, 120)}</div>`) : ''}
@@ -190,6 +191,14 @@ window.App = window.App || {};
                       ? h`<span class="badge badge-ok">已在库</span>`
                       : h`<button class="btn btn-sm btn-ghost" data-action="discover-ingest"
                            data-id="${hit.arxiv_id}${hit.version || ''}">入库并解析</button>`}
+                    ${(() => {
+                      const r = (d.subs.reasons || {})[hit.arxiv_id];
+                      if (r && r.reason) return U.raw(h`<span class="muted tiny" title="${r.reason}">· ${U.clip(r.reason, 60)}</span>`);
+                      if (r && r.loading) return U.raw(h`<span class="muted tiny">生成理由中…</span>`);
+                      if (r && r.error) return U.raw(h`<span class="muted tiny">理由生成失败</span>`);
+                      return U.raw(h`<button class="btn btn-sm btn-ghost" data-action="explain-reason"
+                        data-arxiv="${hit.arxiv_id}">为什么推荐</button>`);
+                    })()}
                   </div>`).join(''))}
               </div>`) : h`<div class="muted tiny mt-8">还没有抓到新论文，点「立即检查」试试。</div>`}
           </div>`).join(''))

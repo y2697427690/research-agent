@@ -57,3 +57,14 @@ class RebuildResponse(BaseModel):
     by_title: int = 0
     external: int = 0
     details: list[dict] = Field(default_factory=list)
+
+
+class SurveyRequest(BaseModel):
+    """自动综述请求。不传 paper_ids 表示用整个库。"""
+
+    paper_ids: list[str] = Field(default_factory=list, description="参与综述的论文 id，空表示全库")
+
+
+class SurveyResponse(BaseModel):
+    summary: str = Field("", description="一段 150~250 字的中文综述，含《标题》形式出处")
+    papers: list[dict] = Field(default_factory=list, description="参与综述的论文与被引次数")

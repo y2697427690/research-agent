@@ -90,6 +90,7 @@ window.App = window.App || {};
         loaded: false,        // 是否已尝试加载过（失败也算，避免反复重试）
         checking: {},        // subscriptionId -> true，正在检查
         removing: {},        // subscriptionId -> true，正在删除
+        reasons: {},         // arxivId -> { reason, related } 推荐理由缓存
       },
     },
 
@@ -409,6 +410,24 @@ window.App = window.App || {};
       notify('uploads');
     },
 
+    /**
+     * 生成领域综述（需求 1.5.3）。
+     * 放在 store：结果要在图谱页重绘后仍然显示，不能存视图局部变量。
+     */
+    async generateSurvey() {
+      if (state.graph.survey && state.graph.survey.loading) return;
+      state.graph.survey = { loading: true };
+      notify('graph');
+      try {
+        const res = await App.api.surveySummary([]);
+        state.graph.survey = { summary: res.summary, papers: res.papers || [] };
+      } catch (err) {
+        state.graph.survey = { error: err.message || '生成失败' };
+      } finally {
+        notify('graph');
+      }
+    },
+
     /* ===== 订阅 ===== */
     /**
      * 拉订阅列表。
@@ -496,6 +515,30 @@ window.App = window.App || {};
         App.ui.toast('检查失败：' + err.message, 'error', 4000);
       } finally {
         delete subs.checking[id];
+        notify('discover');
+      }
+    },
+
+    /**
+     * 生成一条推荐理由（按需，不批量）。
+     * 每条都要调一次模型，所以只在用户点「为什么推荐」时才发请求，
+     * 结果按 arxivId 缓存在 subs.reasons 里，重绘不会重复花钱。
+     */
+    async explainHit(arxivId) {
+      const subs = state.discover.subs;
+      if (!arxivId || subs.reasons[arxivId]) return;
+      subs.reasons[arxivId] = { loading: true };
+      notify('discover');
+      try {
+        let hit = null;
+        (subs.items || []).forEach((sub) => {
+          (sub.latest || []).forEach((h) => { if (h.arxiv_id === arxivId) hit = h; });
+        });
+        const res = await App.api.explainReason(hit ? hit.title : '', hit ? hit.summary : '');
+        subs.reasons[arxivId] = { reason: res.reason, related: res.related || [] };
+      } catch (err) {
+        subs.reasons[arxivId] = { error: err.message || '生成失败' };
+      } finally {
         notify('discover');
       }
     },

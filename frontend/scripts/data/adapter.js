@@ -100,6 +100,8 @@ window.App = window.App || {};
       inLibrary: !!(it.in_library != null ? it.in_library : it.inLibrary),
       // arXiv 已撤稿：没有 PDF，不能入库（否则用户只会等到一次 404）
       withdrawn: !!(it.withdrawn || it.is_withdrawn),
+      // 是否提供开源代码（后端按摘要里的仓库域名判定）
+      hasCode: !!it.has_code,
     };
   }
 

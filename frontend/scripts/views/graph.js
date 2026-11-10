@@ -99,8 +99,8 @@ window.App = window.App || {};
         </div>
       </div>
 
-      ${App.ui.sectionTitle('未来工作探索', '<span class="muted tiny">对应需求 1.5.4：排除已被最新论文尝试过的 idea</span>')}
-      <div class="grid grid-2" id="future"></div>
+      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">对应需求 1.5.3：按引用关系排序后生成领域综述</span>')}
+      <div class="card mb-16"><div class="card-body" id="survey"></div></div>
     `;
 
     drawGraph(nodes);
@@ -515,7 +515,7 @@ window.App = window.App || {};
         const text = App.data.graphInsights['g-transformer'].summary;
         box.innerHTML = h`<div class="summary-text" id="sumtxt"></div>`;
         U.streamText(U.$('#sumtxt'), text, { speed: 8, chunk: 3 });
-        renderFuture();
+        renderSurvey();
         App.ui.toast('综述已生成，未来工作建议已同步更新', 'ok');
       });
     }
@@ -530,29 +530,51 @@ window.App = window.App || {};
     }
   }
 
-  function renderFuture() {
-    const box = U.$('#future');
-    if (!box || box.dataset.done) return;
-    box.dataset.done = '1';
-    const list = App.data.graphInsights['g-transformer'].futureWork;
-    box.innerHTML = list.map((f) => h`
-      <div class="card">
-        <div class="card-body">
-          <div class="row gap-8 mb-8">
-            <span class="badge ${f.risk === '低' ? 'badge-ok' : f.risk === '中' ? 'badge-warn' : 'badge-danger'}">空档风险 ${f.risk}</span>
-            <span style="font-weight:620">${f.title}</span>
-          </div>
-          <div class="muted small">${f.reason}</div>
-          <div class="row gap-4 mt-12 wrap">
-            ${U.raw(f.related.map((id) => {
-              const p = App.data.getPaper(id);
-              return p ? h`<button class="badge badge-outline" data-action="graph-open-paper" data-id="${id}" style="cursor:pointer">${U.clip(p.title, 22)}</button>` : '';
-            }).join(''))}
-          </div>
-        </div>
-      </div>`).join('');
+  /**
+   * 领域综述卡片（需求 1.5.3）。
+   *
+   * 原来的「未来工作」占位已删：需求要求的能力现在真的能生成，
+   * 再摆假卡片就是自相矛盾。综述下方列出参与论文与被引次数，
+   * 读者能核对它是不是在瞎说。
+   */
+  function renderSurvey() {
+    const box = U.$('#survey');
+    if (!box) return;
+    const s = (App.store.state.graph.survey) || null;
+
+    if (!s) {
+      box.innerHTML = h`
+        <div class="row gap-8 wrap">
+          <button class="btn btn-primary" data-action="gen-survey">✦ 生成领域综述</button>
+          <span class="muted tiny">按库内引用关系排序生成，约 150~250 字，带《标题》出处</span>
+        </div>`;
+      return;
+    }
+    if (s.loading) {
+      box.innerHTML = h`<div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">正在生成综述…</span></div>`;
+      return;
+    }
+    if (s.error) {
+      box.innerHTML = h`
+        <div class="row gap-8 wrap">
+          <span class="muted small">生成失败：${s.error}</span>
+          <button class="btn btn-sm btn-ghost" data-action="gen-survey">重试</button>
+        </div>`;
+      return;
+    }
+    box.innerHTML = h`
+      <div class="abstract-zh" style="line-height:1.9">${s.summary}</div>
+      <div class="row gap-6 mt-12 wrap">
+        ${U.raw((s.papers || []).slice(0, 8).map((p) => h`
+          <span class="badge badge-outline" title="被库内论文引用 ${p.in_degree} 次">${U.clip(p.title, 20)} · ${p.in_degree}</span>
+        `).join(''))}
+      </div>
+      <div class="row gap-8 mt-12">
+        <button class="btn btn-sm btn-ghost" data-action="gen-survey">重新生成</button>
+        <span class="muted tiny">参与综述的论文与被引次数见上方标签</span>
+      </div>`;
   }
 
   App.views = App.views || {};
-  App.views.graph = { render, drawGraph, renderSide };
+  App.views.graph = { render, drawGraph, renderSide, renderSurvey };
 })(window.App);

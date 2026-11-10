@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-11-11",
+    "note": "30 题 gold set：25 题可答（覆盖 20 篇论文的主要事实）+ 5 题不可答（库里没有，检验拒答）。keywords 为答案中必须出现的关键词之一，用于自动判定。"
+  },
+  "answerable": [
+    {"id": "a01", "question": "Attention Is All You Need 中 Transformer (big) 在 WMT 2014 英德翻译上达到多少 BLEU？", "keywords": ["41.0", "41,0", "BLEU"]},
+    {"id": "a02", "question": "训练 base 版 Transformer 模型用了多少块 GPU？", "keywords": ["8", "P100"]},
+    {"id": "a03", "question": "论文 Attention Is All You Need 的第六作者是谁？", "keywords": ["Gomez"]},
+    {"id": "a04", "question": "BERT-large 有多少层 Transformer？", "keywords": ["24"]},
+    {"id": "a05", "question": "BERT 的预训练目标是什么？", "keywords": ["masked language model", "MLM", "next sentence"]},
+    {"id": "a06", "question": "Layer Normalization 为什么比 Batch Normalization 更适合 RNN？", "keywords": ["batch", "per sample", "independent"]},
+    {"id": "a07", "question": "T5 使用的 C4 数据集来自哪里？", "keywords": ["Common Crawl", "C4"]},
+    {"id": "a08", "question": "CLIP 怎么做零样本分类？", "keywords": ["zero-shot", "prompt", "text encoder"]},
+    {"id": "a09", "question": "Vision Transformer 把图像切分成多大的 patch？", "keywords": ["16x16", "16×16", "patch"]},
+    {"id": "a10", "question": "Codex 在 HumanEval 上的通过率是多少？", "keywords": ["HumanEval", "pass@1", "%"]},
+    {"id": "a11", "question": "InstructGPT 用了多少名标注人员？", "keywords": ["labeler", "40", "contractor"]},
+    {"id": "a12", "question": "Qwen2.5 发布了哪些尺寸的模型？", "keywords": ["Qwen2.5", "0.5", "72"]},
+    {"id": "a13", "question": "ZeRO 的三个优化阶段分别切分了什么？", "keywords": ["optimizer state", "gradient", "parameter"]},
+    {"id": "a14", "question": "PPO 的 clipped surrogate objective 解决了什么问题？", "keywords": ["clip", "surrogate", "policy"]},
+    {"id": "a15", "question": "Understanding Deep Learning 这本书主要讲什么？", "keywords": ["supervised", "deep learning", "neural network"]},
+    {"id": "a16", "question": "Improving Language Understanding 用的是哪套评测基准？", "keywords": ["GLUE", "benchmark"]},
+    {"id": "a17", "question": "在 Transformer 中用 Pre-LN 相比 Post-LN 有什么好处？", "keywords": ["pre-LN", "post-LN", "warm-up"]},
+    {"id": "a18", "question": "Emergent Abilities of Large Language Models 讲了什么现象？", "keywords": ["emergent", "scale", "ability"]},
+    {"id": "a19", "question": "LLaMA 论文总共训练了多少个 token？", "keywords": ["token", "trillion", "1.4"]},
+    {"id": "a20", "question": "ViT 在大规模数据上预训练后效果如何？", "keywords": ["pretrain", "ImageNet", "ViT"]},
+    {"id": "a21", "question": "BERT 论文里用了什么数据做预训练？", "keywords": ["BooksCorpus", "Wikipedia"]},
+    {"id": "a22", "question": "Transformer 的多头注意力里，每个头的维度怎么算？", "keywords": ["dk", "dmodel", "head"]},
+    {"id": "a23", "question": "GPT 系列里 InstructGPT 和原始 GPT-3 的目标有什么不同？", "keywords": ["instruction", "human", "preference"]},
+    {"id": "a24", "question": "CLIP 的训练目标是什么？", "keywords": ["contrastive", "image-text", "similarity"]},
+    {"id": "a25", "question": "T5 把所有任务统一成了什么形式？", "keywords": ["text-to-text", "text to text", "span"]}
+  ],
+  "unanswerable": [
+    {"id": "u01", "question": "Shor 算法分解大整数的具体量子线路深度是多少？", "reason": "库内没有量子计算论文"},
+    {"id": "u02", "question": "AlphaFold 3 在 CASP15 上的具体 GDT 分数是多少？", "reason": "库内没有 AlphaFold 论文"},
+    {"id": "u03", "question": "5G NR 在 28GHz 频段的路径损耗模型参数是什么？", "reason": "库内没有通信论文"},
+    {"id": "u04", "question": "用深度学习做糖尿病视网膜病变筛查有什么临床指南？", "reason": "库内没有医学论文"},
+    {"id": "u05", "question": "LSTM 在处理中文分词时词表应该设多大？", "reason": "库内没有中文分词论文，且该问题本身无唯一答案"}
+  ]
+}

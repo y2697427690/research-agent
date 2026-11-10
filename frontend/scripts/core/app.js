@@ -245,6 +245,7 @@ window.App = window.App || {};
       case 'discover-search': S.discoverSearch(); break;
       case 'discover-sort': S.setDiscoverSort(data.sort); break;
       case 'discover-ingest': S.discoverIngest(data.id); break;
+      case 'gen-survey': S.generateSurvey(); break;
       // ---- 订阅 ----
       case 'add-subscription': {
         const kw = U.$('#sub-keyword');
@@ -253,6 +254,7 @@ window.App = window.App || {};
         break;
       }
       case 'check-subscription': S.checkSubscription(data.id); break;
+      case 'explain-reason': S.explainHit(data.arxiv); break;
       case 'delete-subscription': S.removeSubscription(data.id); break;
       case 'vote-up': S.vote(data.id, 'up'); break;
       case 'vote-down': S.vote(data.id, 'down'); break;

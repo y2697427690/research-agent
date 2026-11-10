@@ -459,7 +459,7 @@ t('图谱：SVG、节点、引用箭头都画出来了', () => {
   mustFind('#arrow');
   mustFind('#insights');
   mustFind('#summary-box');
-  mustFind('#future');
+  mustFind('#survey');   // 原「未来工作」占位已替换为真实综述卡片（需求 1.5.3）
   mustFind('#gside');
 });
 

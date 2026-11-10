@@ -24,12 +24,14 @@ from app.db.session import get_db
 from app.models.paper import Paper
 from app.schemas.discover import (
     ArxivItemOut,
+    DiscoverReasonRequest,
+    DiscoverReasonResponse,
     DiscoverSearchResponse,
     IngestRequest,
     IngestResponse,
 )
 from app.schemas.paper import DuplicateInfo, PaperOut
-from app.services import discover, paper_service
+from app.services import discover, paper_service, recommend_service
 
 router = APIRouter(prefix="/discover", tags=["论文发现"])
 logger = get_logger(__name__)
@@ -93,6 +95,7 @@ async def search_arxiv(
                 abs_url=it.abs_url,
                 in_library=it.arxiv_id in known,
                 withdrawn=it.withdrawn,
+                has_code=it.has_code,
             )
             for it in items
         ],
@@ -163,3 +166,23 @@ async def ingest_arxiv(
         paper=PaperOut.model_validate(paper),
         message="已入库，接下来可以触发解析",
     )
+
+
+@router.post("/reason", response_model=DiscoverReasonResponse, summary="生成一条推荐理由")
+async def explain_reason(
+    payload: DiscoverReasonRequest,
+    db: AsyncSession = Depends(get_db),
+) -> DiscoverReasonResponse:
+    """结合库内已有论文，说明这条结果为什么值得看。
+
+    做成"按需生成"而不是批量：每条都要调一次模型，
+    20 条命中一次生成要几十秒且烧钱，用户只为想看的那条付一次成本。
+    """
+    try:
+        reason, related = await recommend_service.explain(
+            db, payload.title, payload.summary
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("推荐理由生成失败 %s: %s", payload.arxiv_id, exc)
+        raise InvalidRequest("生成推荐理由失败，请稍后重试") from exc
+    return DiscoverReasonResponse(reason=reason, related=related)

@@ -66,6 +66,7 @@ class ArxivItem:
     pdf_url: str = ""
     abs_url: str = ""
     withdrawn: bool = False       # arXiv 已撤稿：没有 PDF，不允许入库
+    has_code: bool = False        # 摘要/备注里提到代码仓库地址
 
 
 def build_query(raw: str) -> tuple[str, bool]:
@@ -95,6 +96,19 @@ def build_fallback_query(raw: str) -> str:
     if _QUERY_SYNTAX.search(q) or '"' in q:
         return q
     return f"all:{q}"
+
+
+CODE_HOSTS = ("github.com", "gitlab.com", "huggingface.co", "codeocean.com")
+
+
+def _has_code(summary: str | None, comment: str | None) -> bool:
+    """判断这条结果是否提供了开源代码。
+
+    只看摘要与备注里的仓库域名：不请求外网、不调模型，
+    宁可漏报也不误报 —— 推荐里把"没有代码"说成"有代码"会直接损失信任。
+    """
+    text = f"{summary or ''} {comment or ''}".lower()
+    return any(host in text for host in CODE_HOSTS)
 
 
 def _is_withdrawn(summary: str | None, comment: str | None) -> bool:
@@ -139,6 +153,7 @@ def _to_item(result: arxiv.Result) -> ArxivItem:
         categories=list(result.categories or []),
         comment=comment,
         withdrawn=_is_withdrawn(summary, comment),
+        has_code=_has_code(summary, comment),
         pdf_url=result.pdf_url or "",
         abs_url=result.entry_id or "",
     )

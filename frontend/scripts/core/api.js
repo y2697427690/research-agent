@@ -294,6 +294,11 @@ window.App = window.App || {};
       });
     },
 
+    /** 生成推荐理由：后端会用库内论文做对照 */
+    explainReason(title, summary) {
+      return postJson('/discover/reason', { title: title, summary: summary || '' }, 60000);
+    },
+
     deleteSubscription(id) {
       return request('/subscriptions/' + encodeURIComponent(id), { method: 'DELETE' });
     },
@@ -305,6 +310,11 @@ window.App = window.App || {};
 
     /* ---- 引用图谱 ---- */
     graph() { return get('/graph'); },
+
+    /** 自动综述：后端按入度排序后让模型写一段带出处的领域综述 */
+    surveySummary(paperIds) {
+      return postJson('/graph/summary', { paper_ids: paperIds || [] }, 90000);
+    },
     /** 重建引用关系：需要重新解析 PDF，约 1~2 秒（6 篇），只在用户点击时调用 */
     rebuildGraph() { return postJson('/graph/rebuild', {}); },
 

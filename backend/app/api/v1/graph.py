@@ -13,14 +13,20 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import InvalidRequest
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.schemas.graph import (
     GraphEdgeOut,
     GraphNodeOut,
     GraphResponse,
     RebuildResponse,
+    SurveyRequest,
+    SurveyResponse,
 )
-from app.services import citation_service, graph_service
+from app.services import citation_service, graph_service, survey_service
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/graph", tags=["引用图谱"])
 
@@ -96,3 +102,24 @@ async def rebuild(db: AsyncSession = Depends(get_db)) -> RebuildResponse:
             for r in results
         ],
     )
+
+
+@router.post("/summary", response_model=SurveyResponse, summary="自动综述（需求 1.5.3）")
+async def auto_survey(
+    payload: SurveyRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> SurveyResponse:
+    """按入度排序后让模型写一段带出处的领域综述。
+
+    入度越高说明被同方向论文引用得越多，越接近"奠基工作"；
+    综述据此从奠基讲到衍生，读者能看出脉络而不是一堆并列介绍。
+    """
+    req = payload or SurveyRequest()
+    try:
+        result = await survey_service.build(db, req.paper_ids or None)
+    except ValueError as exc:
+        raise InvalidRequest(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("自动综述失败: %s", exc)
+        raise InvalidRequest("生成综述失败，请稍后重试") from exc
+    return SurveyResponse(summary=result["summary"], papers=result["papers"])
