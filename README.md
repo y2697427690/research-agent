@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-168%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-199%20passed-brightgreen)]()
 [![Ruff](https://img.shields.io/badge/ruff-0%20issues-orange)]()
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
@@ -63,9 +63,47 @@
 | 数据 | SQLAlchemy 2.0 async + SQLite(WAL) | ORM 抽象层便于将来切换 PostgreSQL |
 | PDF 解析 | PyMuPDF | 可同时获取文字、坐标、字号、表格结构 |
 | 图论分析 | NetworkX | 引用网络与中心性分析 |
+| 定时任务 | APScheduler | 订阅的每日 arXiv 追踪（默认关闭，线上开启） |
 | 大模型 | OpenAI 兼容 API | DeepSeek / OpenAI / 本地 Ollama 均可切换 |
 | 代码规范 | Ruff | 规则集 E/W/F/I/N/UP/B/SIM |
-| 测试 | pytest + pytest-asyncio | 168 个用例 |
+| 测试 | pytest + pytest-asyncio | 199 个用例 |
+
+---
+
+## 三个容易被忽略的实现
+
+### Agent 自主调用（不是固定流水线）
+
+问答页的「Agent 自主调用」不是把检索→生成写死，而是让模型**自己决定**调哪个工具、调几次：
+
+```
+用户提问 → 模型输出 {"thought": ..., "action": "graph_insights", "args": {...}}
+        → 执行工具 → 观测结果回灌 → 模型继续决策 → ... → {"final": "回答"}
+```
+
+* 工具注册表：`search_library` / `list_papers` / `graph_insights` / `discover_arxiv` / `translate`（JSON Schema 声明参数）
+* 护栏：最多 4 步（到上限强制收尾）、同参重复调用拦截、未知工具与工具异常降级为观测让模型自纠
+* 轨迹落库返回：界面逐步展示 thought / 工具 / 是否成功，观测结果可展开
+
+### 关键词订阅（每日追踪）
+
+发现页「我的订阅」加一个关键词（可选 arXiv 分类），系统每天 09:00 抓一次：
+
+* 去重两层：先查已有 `arxiv_id`，再靠 `(subscription_id, arxiv_id)` 唯一约束兜底
+* 抓取串行且间隔 4 秒（arXiv 要求 ≥3 秒），单条失败不影响其他
+* 命中项带「含代码」标记与「为什么推荐」——后者结合库内论文标题让模型写一句关系说明，看不出关系会直说
+
+### 评测：30 题 gold set
+
+`docs/eval/gold.json`（25 可答 + 5 不可答），`deploy/eval_gold.py` 自动算指标并生成报告：
+
+| 指标 | 实测 |
+| --- | --- |
+| Recall@16 | 96.0% |
+| 引用准确率 | 82.3% ~ 84.4%（两次运行） |
+| 拒答准确率 | 100% |
+
+> 评测属于「实验数据」，和 `pytest` 分开：前者要打真实模型、分钟级；后者必须离线、秒级、可重复。
 
 ---
 
@@ -183,7 +221,7 @@ _（录制完成后填写）_
 # 后端：单元测试 + 接口测试 + 真实 PDF 回归
 cd backend
 python -m pytest tests -q
-# 期望：168 passed
+# 期望：199 passed
 
 # 代码规范检查
 python -m ruff check app tests
@@ -229,7 +267,7 @@ node frontend/tools/smoke/run.js
 │   │   ├── services/          业务层（解析 / 去重 / 论文服务）
 │   │   ├── static/            本地化的文档页资源
 │   │   └── main.py            应用入口
-│   ├── tests/                 168 个测试
+│   ├── tests/                 199 个测试
 │   ├── pyproject.toml         依赖与 ruff / pytest 配置
 │   └── .env.example           环境变量模板
 │
