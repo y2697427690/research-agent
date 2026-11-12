@@ -173,7 +173,7 @@ def md_to_html(md: str) -> str:
 CJK_STACK = '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif'
 
 CSS = f"""
-@page {{ size: A4; margin: 20mm 17mm 18mm 17mm; }}
+@page {{ size: A4; margin: 16mm 15mm 15mm 15mm; }}
 * {{ box-sizing: border-box; }}
 body {{
   font-family: {CJK_STACK};
@@ -182,14 +182,14 @@ body {{
 h1 {{ font-size: 17pt; margin: 0 0 10pt; padding-bottom: 6pt;
       border-bottom: 2pt solid #2f6fed; page-break-before: always; }}
 h1:first-of-type {{ page-break-before: avoid; }}
-h2 {{ font-size: 13pt; margin: 16pt 0 6pt; color: #1f3f8f; page-break-after: avoid; }}
-h3 {{ font-size: 11.5pt; margin: 12pt 0 4pt; color: #2456c9; page-break-after: avoid; }}
+h2 {{ font-size: 13pt; margin: 11pt 0 4pt; color: #1f3f8f; page-break-after: avoid; }}
+h3 {{ font-size: 11.5pt; margin: 8pt 0 3pt; color: #2456c9; page-break-after: avoid; }}
 h4 {{ font-size: 10.5pt; margin: 10pt 0 3pt; page-break-after: avoid; }}
 p {{ margin: 0 0 7pt; text-align: justify; }}
 ul, ol {{ margin: 0 0 8pt; padding-left: 18pt; }}
 li {{ margin: 0 0 3pt; }}
-table {{ border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.5pt; }}
-th, td {{ border: 0.6pt solid #b9c2d0; padding: 4pt 6pt; vertical-align: top; }}
+table {{ border-collapse: collapse; width: 100%; margin: 4pt 0 7pt; font-size: 9pt; }}
+th, td {{ border: 0.6pt solid #b9c2d0; padding: 2.5pt 5pt; vertical-align: top; }}
 th {{ background: #eef3fb; text-align: left; font-weight: 600; }}
 tr {{ page-break-inside: avoid; }}
 code {{ font-family: Consolas, "Cascadia Mono", monospace; font-size: 9pt;
@@ -200,7 +200,7 @@ pre code {{ background: none; padding: 0; font-size: 8.6pt; line-height: 1.55; }
 blockquote {{ margin: 6pt 0 9pt; padding: 6pt 9pt; background: #f6f8fc;
               border-left: 2.5pt solid #8aa6e8; color: #3a4460; }}
 figure {{ margin: 8pt 0 10pt; text-align: center; page-break-inside: avoid; }}
-img {{ max-width: 100%; border: 0.6pt solid #dde3ec; }}
+img {{ max-width: 88%; border: 0.6pt solid #dde3ec; }}
 figcaption {{ font-size: 9pt; color: #5b6472; margin-top: 3pt; }}
 a {{ color: #2f6fed; text-decoration: none; }}
 hr {{ border: none; border-top: 0.6pt solid #dde3ec; margin: 10pt 0; }}
@@ -282,7 +282,7 @@ META = {
     "org": "南京传媒学院 · 计算机科学与技术 · 2024 级",
     # 预提交（10-31）用 10 月；最终提交（11-18）改这里为 11 月即可，
     # 文档标题页与页脚都读这个值
-    "date": "2026 年 10 月",
+    "date": "2026 年 11 月",
     "demo": "http://47.96.97.141:8000/",
 }
 
