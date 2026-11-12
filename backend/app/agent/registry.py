@@ -119,6 +119,41 @@ async def _translate(db: AsyncSession, text: str) -> Any:
     return {"zh": (zh or "").strip()[:600]}
 
 
+async def _auto_survey(db: AsyncSession) -> Any:
+    """自动综述：按引用入度排序后让模型写一段领域综述（需求 1.5.3）。"""
+    from app.services import survey_service
+
+    result = await survey_service.build(db)
+    return {"summary": result["summary"], "papers": result["papers"][:8]}
+
+
+async def _propose_outline(db: AsyncSession, idea: str) -> Any:
+    """论文框架生成（需求 1.6.1）：给定想法，产出 7 段式框架。
+
+    参考文献只允许从库内已有论文里挑 —— 需求原文要求"References 真实没有幻觉"，
+    让模型凭空写参考文献是硬伤，所以这里把库内标题作为唯一候选。
+    """
+    rows = (
+        await db.execute(select(Paper.title).where(Paper.title.is_not(None)).limit(40))
+    ).scalars().all()
+    titles = [t.strip() for t in rows if t and t.strip()]
+    library = "\n".join(f"- {t}" for t in titles) or "（库内暂无论文）"
+
+    text = await llm.chat(
+        [
+            {"role": "system", "content": (
+                "你是论文写作助手。根据想法给出 7 段框架：Abstract / Introduction / "
+                "Related Work / Method / Experiments / Conclusion / References。"
+                "每段 1~2 句要点，用 Markdown 列表输出，不要客套。"
+                "References 只能从给出的库内论文中挑选，不许编造。"
+            )},
+            {"role": "user", "content": f"想法：{idea[:400]}\n\n库内论文：\n{library}"},
+        ],
+        temperature=0.4,
+    )
+    return {"outline": (text or "").strip()[:2000], "candidates": titles[:10]}
+
+
 TOOLS: dict[str, Tool] = {
     t.name: t
     for t in [
@@ -168,6 +203,24 @@ TOOLS: dict[str, Tool] = {
             },
             handler=_discover_arxiv,
             max_chars=1000,
+        ),
+        Tool(
+            name="auto_survey",
+            description="生成当前论文库的领域综述（按被引次数排序，150~250 字，带《标题》出处）。问「这个方向整体怎么样」时用。",
+            parameters={"type": "object", "properties": {}},
+            handler=_auto_survey,
+            max_chars=1200,
+        ),
+        Tool(
+            name="propose_outline",
+            description="给定一个研究想法，生成论文 7 段式框架；参考文献只从库内挑，不编造。",
+            parameters={
+                "type": "object",
+                "properties": {"idea": {"type": "string", "description": "研究想法，一两句话"}},
+                "required": ["idea"],
+            },
+            handler=_propose_outline,
+            max_chars=1600,
         ),
         Tool(
             name="translate",

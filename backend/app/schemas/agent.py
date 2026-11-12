@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ class AgentStepOut(BaseModel):
 
 
 class AgentRunResponse(BaseModel):
+    run_id: str = Field("", description="落库后的执行 id，可用 /agent/history/{run_id} 回看")
     question: str
     answer: str
     steps: list[AgentStepOut] = Field(default_factory=list)
@@ -38,3 +40,22 @@ class AgentToolOut(BaseModel):
 class AgentToolListOut(BaseModel):
     items: list[AgentToolOut] = Field(default_factory=list)
     total: int = 0
+
+
+class AgentRunHistoryItem(BaseModel):
+    id: str
+    question: str
+    answer: str = ""
+    used_tools: list[str] = Field(default_factory=list)
+    tool_calls: int = 0
+    created_at: datetime
+    step_count: int = 0
+
+
+class AgentHistoryOut(BaseModel):
+    items: list[AgentRunHistoryItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class AgentRunDetailOut(AgentRunHistoryItem):
+    steps: list[AgentStepOut] = Field(default_factory=list)
