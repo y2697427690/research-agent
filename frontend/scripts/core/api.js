@@ -248,6 +248,11 @@ window.App = window.App || {};
      *     items: [{ ref_no, text, cited_in: [分块序号...], ... }] }
      * citing_style 为 author-year 时，note 里会有给用户看的说明文案。
      */
+    /** 抽取论文中的表格（后端现抽，约 1 秒内） */
+    paperTables(paperId) {
+      return get('/papers/' + encodeURIComponent(paperId) + '/tables');
+    },
+
     references(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/references');
     },

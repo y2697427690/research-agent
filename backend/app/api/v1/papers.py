@@ -35,6 +35,7 @@ from app.schemas.paper import (
     PaperOut,
     PaperUpdate,
     ParseStateOut,
+    TableOut,
     UploadResponse,
 )
 from app.schemas.reference import ReferenceItemOut, ReferenceListOut
@@ -44,6 +45,7 @@ from app.services import (
     paper_service,
     parser_service,
     reference_service,
+    table_extractor,
     translate_service,
 )
 from app.services.dedupe import DuplicateVerdict
@@ -525,3 +527,40 @@ async def embed_paper(
     )
 
 
+
+
+# ---------------------------------------------------------------- 表格结构
+
+@router.get("/{paper_id}/tables", response_model=list[TableOut], summary="论文中的表格")
+async def list_tables(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[TableOut]:
+    """抽取论文里的表格（带框线的表格才能识别）。
+
+    为什么每次现抽而不是解析时存库：
+      真实表格识别率受框线影响，算法一升级结果就会变；存库反而固化旧结果。
+      单篇抽取实测 <1 秒，接口层面现抽更简单，也不会让解析流程变慢。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    # file_path 存的是相对 storage_dir 的路径
+    path = (settings.storage_dir / paper.file_path).resolve()
+    if not path.exists():
+        raise NotFound("原文文件不存在", {"paper_id": paper_id})
+
+    # 单篇抽取实测 <1 秒，且是纯 CPU 的本地调用；直接同步执行，
+    # 避免为一次轻量调用引入线程池与额外的异常面。
+    tables = table_extractor.extract_tables(path)
+    return [
+        TableOut(
+            page=b["page"],
+            rows=b["rows"],
+            row_count=b["row_count"],
+            col_count=b["col_count"],
+            markdown=b["markdown"],
+        )
+        for b in table_extractor.tables_to_blocks(tables)
+    ]

@@ -93,3 +93,13 @@ class ParseStateOut(BaseModel):
     needs_review: bool | None = None
     warnings: list[str] = Field(default_factory=list)
     started: bool = Field(default=True, description="是否启动了新解析（false 表示已在进行中）")
+
+
+class TableOut(BaseModel):
+    """一张抽取出的表格。"""
+
+    page: int = Field(0, description="页码，1 起")
+    rows: list[list[str]] = Field(default_factory=list, description="单元格文本，第一行通常是表头")
+    row_count: int = 0
+    col_count: int = 0
+    markdown: str = Field("", description="Markdown 管道表，前端/导出复用")

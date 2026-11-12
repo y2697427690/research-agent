@@ -200,6 +200,7 @@ window.App = window.App || {};
       case 'reload-refs': App.views.reader.retryReferences(); break;
       // 导出当前论文为 Markdown（纯前端拼装 + Blob 下载）
       case 'export-md': App.views.reader.exportMarkdown(); break;
+      case 'reader-tables': App.views.reader.openTablesModal(); break;
       case 'goto-anchor': S.gotoAnchor(data.id); App.views.reader.scrollToAnchor(data.id); break;
       case 'goto-publication': App.views.reader.gotoPublication(data.id); break;
       case 'open-ref-paper': S.openPaper(data.id); break;
