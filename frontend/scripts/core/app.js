@@ -159,7 +159,7 @@ window.App = window.App || {};
     switch (action) {
       /* ---- 全局 ---- */
       case 'go': S.go(data.route, data); break;
-      case 'open-paper': S.openPaper(data.id); break;
+      case 'open-paper': S.drawer(null); S.openPaper(data.id); break;   // 先收抽屉，否则阅读器被压在遮罩下
       // 引用卡片里的「跳转原文」：打开论文并定位到该片段
       case 'open-evidence':
         S.openPaper(data.id);
@@ -182,9 +182,9 @@ window.App = window.App || {};
       case 'star': S.toggleStar(data.id); break;
       case 'reparse': S.reparse(data.id); break;
       case 'delete-paper': App.views.library.confirmDelete(data.id); break;
-      case 'meta': App.ui.drawer('meta', { paperId: data.id }); break;
-      case 'close-drawer': App.ui.drawer(null); break;
-      case 'parse-detail': App.ui.drawer('parse', { paperId: data.id }); break;
+      case 'meta': S.drawer('meta', { paperId: data.id }); break;
+      case 'close-drawer': S.drawer(null); break;
+      case 'parse-detail': S.drawer('parse', { paperId: data.id }); break;
       case 'back-to-list': S.go('library'); break;
       // 需求对照表：不在主导航里，从侧边栏底部的小链接进入
       case 'open-guide': S.go('guide'); break;
