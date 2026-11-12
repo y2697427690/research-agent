@@ -535,12 +535,12 @@ window.App = window.App || {};
 
         ${U.raw(App.ui.sectionTitle('④ 章节层级（TOC）', '<span class="muted tiny">需求要求解析到三级标题</span>'))}
         ${toc.length
-          ? U.raw(h`<div class="toc-preview">${toc.map((t) => h`
+          ? U.raw(h`<div class="toc-preview">${U.raw(toc.map((t) => h`
               <div class="toc-line lv${t.level}">
                 <span class="mono muted tiny">p.${t.page}</span>
                 <span>${t.title}</span>
                 <span class="muted tiny">${t.titleZh || ''}</span>
-              </div>`).join('')}</div>`)
+              </div>`).join(''))}</div>`)
           : U.raw(App.ui.empty('❐', '该论文未内置演示目录（仅《Attention Is All You Need》提供了完整章节树）'))}
 
         ${U.raw(App.ui.sectionTitle('⑤ 结构化元素统计'))}
