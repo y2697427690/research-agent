@@ -249,6 +249,11 @@ window.App = window.App || {};
      * citing_style 为 author-year 时，note 里会有给用户看的说明文案。
      */
     /** 抽取论文中的表格（后端现抽，约 1 秒内） */
+    /** 抽取论文中的图片（位图） */
+    paperFigures(paperId) {
+      return get('/papers/' + encodeURIComponent(paperId) + '/figures');
+    },
+
     paperTables(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/tables');
     },

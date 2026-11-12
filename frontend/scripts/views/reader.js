@@ -288,6 +288,7 @@ window.App = window.App || {};
       <div class="sep"></div>
       <button class="btn btn-sm btn-ghost" data-action="export-md" title="把当前论文导出为 Markdown（含元信息、正文、参考文献）">导出 MD</button>
       <button class="btn btn-sm btn-ghost" data-action="reader-tables" title="抽取论文中的表格（依赖表格框线）">表格</button>
+      <button class="btn btn-sm btn-ghost" data-action="reader-figures" title="抽取论文中的插图（仅位图）">图片</button>
       <button class="btn btn-sm btn-ghost" data-action="goto-publication" data-id="${paperId}">查看解析详情</button>`);
   }
 
@@ -747,6 +748,53 @@ window.App = window.App || {};
   }
 
   /* ==========================================================================
+     5.3.3 图片查看
+     ========================================================================== */
+  function openFiguresModal() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    if (!paperId) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const modal = App.ui.openModal(h`
+      <div class="modal" style="width:900px;max-width:96vw">
+        <div class="modal-head">
+          <div class="modal-title">论文中的图片</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline">仅内嵌位图</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body" id="figs-body">
+          <div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">正在抽取图片…</span></div>
+        </div>
+      </div>`);
+
+    const box = U.$('#figs-body', modal.mask);
+    App.api.paperFigures(paperId)
+      .then((figs) => {
+        if (!box) return;
+        const list = figs || [];
+        if (!list.length) {
+          box.innerHTML = h`<div class="muted small">没有抽到内嵌位图。矢量图（很多论文的框架图）属已知限制。</div>`;
+          return;
+        }
+        box.innerHTML = h`
+          <div class="muted tiny mb-12">共 ${list.length} 张。点击图片在新标签页查看大图。</div>
+          <div class="fig-grid">
+            ${U.raw(list.map((f) => h`
+              <div class="fig-item">
+                <a href="${f.data_url}" target="_blank" rel="noopener">
+                  <img src="${f.data_url}" alt="第${f.page}页插图" loading="lazy" />
+                </a>
+                <div class="muted tiny mt-8">第 ${f.page} 页 · ${f.width}×${f.height}</div>
+              </div>`).join(''))}
+          </div>`;
+      })
+      .catch((err) => {
+        if (box) box.innerHTML = h`<div class="muted small">抽取失败：${err.message}</div>`;
+      });
+  }
+
+  /* ==========================================================================
      5.4 参考文献（双向跳转）
      --------------------------------------------------------------------------
      两个方向：
@@ -1115,6 +1163,6 @@ window.App = window.App || {};
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
-    jumpToCiting, retryReferences, exportMarkdown, openTablesModal,
+    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal,
   };
 })(window.App);

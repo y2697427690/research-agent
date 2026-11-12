@@ -31,6 +31,7 @@ from app.schemas.chunk import (
 from app.schemas.common import Ok, Page
 from app.schemas.paper import (
     DuplicateInfo,
+    FigureOut,
     PaperCreateResult,
     PaperOut,
     PaperUpdate,
@@ -42,6 +43,7 @@ from app.schemas.reference import ReferenceItemOut, ReferenceListOut
 from app.schemas.search import EmbedRequest, EmbedResponse
 from app.services import (
     chunk_service,
+    figure_extractor,
     paper_service,
     parser_service,
     reference_service,
@@ -563,4 +565,26 @@ async def list_tables(
             markdown=b["markdown"],
         )
         for b in table_extractor.tables_to_blocks(tables)
+    ]
+
+
+# ---------------------------------------------------------------- 图片
+
+@router.get("/{paper_id}/figures", response_model=list[FigureOut], summary="论文中的图片")
+async def list_figures(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[FigureOut]:
+    """抽取论文内嵌位图（矢量图抽不到，属已知限制）。"""
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+    path = (settings.storage_dir / paper.file_path).resolve()
+    if not path.exists():
+        raise NotFound("原文文件不存在", {"paper_id": paper_id})
+
+    figures = figure_extractor.extract_figures(path)
+    return [
+        FigureOut(page=f.page, width=f.width, height=f.height, ext=f.ext, data_url=f.data_url)
+        for f in figures
     ]

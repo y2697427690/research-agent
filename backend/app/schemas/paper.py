@@ -103,3 +103,13 @@ class TableOut(BaseModel):
     row_count: int = 0
     col_count: int = 0
     markdown: str = Field("", description="Markdown 管道表，前端/导出复用")
+
+
+class FigureOut(BaseModel):
+    """一张抽取出的图（data URL 内联，前端直接 <img>）。"""
+
+    page: int = Field(0, description="页码，1 起")
+    width: int = 0
+    height: int = 0
+    ext: str = "png"
+    data_url: str = Field("", description="base64 data URL")
