@@ -772,26 +772,41 @@ window.App = window.App || {};
       </div>`);
 
     const box = U.$('#figs-body', modal.mask);
-    App.api.paperFigures(paperId)
-      .then((figs) => {
-        if (!box) return;
-        const list = figs || [];
-        if (!list.length) {
-          box.innerHTML = h`<div class="muted small">没有抽到内嵌位图。矢量图（很多论文的框架图）属已知限制。</div>`;
-          return;
-        }
-        box.innerHTML = h`
-          <div class="muted tiny mb-12">共 ${list.length} 张。点击图片在新标签页查看大图。</div>
-          <div class="fig-grid">
-            ${U.raw(list.map((f) => h`
-              <div class="fig-item">
-                <a href="${f.data_url}" target="_blank" rel="noopener">
-                  <img src="${f.data_url}" alt="第${f.page}页插图" loading="lazy" />
-                </a>
-                <div class="muted tiny mt-8">第 ${f.page} 页 · ${f.width}×${f.height}</div>
-              </div>`).join(''))}
-          </div>`;
-      })
+    // 图片与图注并行取：图注失败不影响看图
+    Promise.all([
+      App.api.paperFigures(paperId).catch(() => []),
+      App.api.paperFigureCaptions(paperId).catch(() => ({ items: [] })),
+    ]).then(([figs, capRes]) => {
+      if (!box) return;
+      const list = figs || [];
+      const caps = (capRes && capRes.items) || [];
+      // 图注不强制与图片配对：矢量图/多图并排时编号顺序未必一致，硬配会标错
+      const capHtml = caps.length
+        ? h`
+          <div class="muted tiny mt-16 mb-8">图注（原文摘录，共 ${caps.length} 条；未与图片强制配对，避免错配）</div>
+          ${U.raw(caps.map((c) => h`
+            <div class="mb-8" style="padding:8px 10px;background:var(--bg-2);border-radius:6px">
+              <span class="badge badge-outline mono">Fig. ${c.number}</span>
+              <span class="small" style="line-height:1.7">${c.caption}</span>
+            </div>`).join(''))}`
+        : '';
+      if (!list.length) {
+        box.innerHTML = h`<div class="muted small">没有抽到内嵌位图。矢量图（很多论文的框架图）属已知限制。</div>${U.raw(capHtml)}`;
+        return;
+      }
+      box.innerHTML = h`
+        <div class="muted tiny mb-12">共 ${list.length} 张。点击图片在新标签页查看大图。</div>
+        <div class="fig-grid">
+          ${U.raw(list.map((f) => h`
+            <div class="fig-item">
+              <a href="${f.data_url}" target="_blank" rel="noopener">
+                <img src="${f.data_url}" alt="第${f.page}页插图" loading="lazy" />
+              </a>
+              <div class="muted tiny mt-8">第 ${f.page} 页 · ${f.width}×${f.height}</div>
+            </div>`).join(''))}
+        </div>
+        ${U.raw(capHtml)}`;
+    })
       .catch((err) => {
         if (box) box.innerHTML = h`<div class="muted small">抽取失败：${err.message}</div>`;
       });

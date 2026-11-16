@@ -270,6 +270,11 @@ window.App = window.App || {};
       return postJson('/papers/' + encodeURIComponent(paperId) + '/feedback', { value: value });
     },
 
+    /** 图注（Figure N: ...），按页码就近配对图片 */
+    paperFigureCaptions(paperId) {
+      return get('/papers/' + encodeURIComponent(paperId) + '/figure-captions');
+    },
+
     paperTables(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/tables');
     },

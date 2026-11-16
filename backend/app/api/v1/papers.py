@@ -6,6 +6,8 @@
 
 
 
+import re
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -707,3 +709,48 @@ async def vote_feedback(
     await db.commit()
     up, down = await _feedback_counts(db, paper_id)
     return FeedbackOut(paper_id=paper_id, up=up, down=down)
+
+# ---------------------------------------------------------------- 图注
+
+CAPTION_RE = re.compile(
+    r"(?:Figure|Fig\.?)\s*(\d{1,3})\s*[:.]\s*(.{10,300}?)(?=\s{2,}|\n|$)",
+    re.IGNORECASE,
+)
+
+
+@router.get("/{paper_id}/figure-captions", summary="图注（Figure N: ...）")
+async def list_figure_captions(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """从正文块里找「Figure N: 说明」并带上页码。
+
+    只做文本提取，不与图片强制配对：矢量图不带位图、多图并排时编号与
+    实际图片顺序未必一致，硬配会显示错图注。前端按【同页】就近显示。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    rows = (
+        await db.execute(
+            select(Chunk.text, Chunk.page_start)
+            .where(Chunk.paper_id == paper_id)
+            .order_by(Chunk.chunk_index)
+        )
+    ).all()
+
+    items, seen = [], set()
+    for text, page in rows:
+        for m in CAPTION_RE.finditer(text or ""):
+            num = m.group(1)
+            cap = " ".join(m.group(2).split())
+            if (num, page) in seen or len(cap) < 10:
+                continue
+            seen.add((num, page))
+            items.append({"number": num, "page": page or 1, "caption": cap[:240]})
+            if len(items) >= 40:
+                break
+        if len(items) >= 40:
+            break
+    return {"paper_id": paper_id, "items": items, "found": bool(items)}
