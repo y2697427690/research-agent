@@ -93,7 +93,8 @@ window.App = window.App || {};
             <div class="card-head">
               <div class="card-title">会话</div>
               <div class="spacer"></div>
-              <button class="btn btn-sm btn-ghost" data-action="qa-new-chat">＋ 新建</button>
+              <button class="btn btn-sm btn-ghost" data-action="export-chat" title="导出当前会话为 Markdown">导出</button>
+                <button class="btn btn-sm btn-ghost" data-action="qa-new-chat">＋ 新建</button>
             </div>
             <div class="card-body tight">
               ${st.chats.length ? U.raw(st.chats.map((c) => h`
@@ -380,6 +381,44 @@ window.App = window.App || {};
   function refreshAgentPanel() {
     const box = U.$('#agent-body');
     if (box) box.innerHTML = agentBody(App.store.state);
+  }
+
+  /**
+   * 导出当前会话为 Markdown。
+   * 记录「问 → 答 → 引用片段」，方便把一次研究过程带走或贴进文档。
+   */
+  function exportChat() {
+    const st = App.store.state;
+    const chat = (st.chats || []).find((c) => c.id === st.activeChatId);
+    if (!chat || !(chat.messages || []).length) {
+      App.ui.toast('当前会话还没有内容', 'warn', 2000);
+      return;
+    }
+
+    const lines = ['# ' + (chat.title || '问答记录'), ''];
+    lines.push('> 由「科研小助手 Agent」导出 · ' + new Date().toISOString().slice(0, 10), '');
+    chat.messages.forEach((m) => {
+      const text = String(m.text || '').trim();
+      if (!text && !(m.evidence || []).length) return;
+      if (m.role === 'user') {
+        lines.push('## 问：' + text.replace(/\n/g, ' '), '');
+        return;
+      }
+      lines.push('### 答', '', text, '');
+      const ev = m.evidence || [];
+      if (ev.length) {
+        lines.push('**引用片段**', '');
+        ev.forEach((e) => {
+          const no = e.index || '';
+          const where = [e.paperTitle, e.page ? 'p.' + e.page : ''].filter(Boolean).join(' · ');
+          lines.push('[' + no + '] ' + where + (where ? '：' : '') + String(e.text || '').slice(0, 300), '');
+        });
+      }
+    });
+
+    const name = U.safeFileName(chat.title || 'qa-export') + '.md';
+    U.download(name, lines.join('\n'), 'text/markdown;charset=utf-8');
+    App.ui.toast('已导出 ' + name, 'ok', 2600);
   }
 
   function welcomeHtml() {
@@ -672,5 +711,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard, agentBody, openAgentPanel, refreshAgentPanel, openAgentHistory };
+  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard, agentBody, openAgentPanel, refreshAgentPanel, openAgentHistory, exportChat };
 })(window.App);

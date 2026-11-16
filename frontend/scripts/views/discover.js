@@ -209,7 +209,15 @@ window.App = window.App || {};
         <div class="card-head">
           <div class="card-title">我的订阅</div>
           <div class="spacer"></div>
-          <span class="muted tiny">每天 09:00 自动检查（arXiv 限速，串行执行）</span>
+          <span class="muted tiny">
+            ${(() => {
+              const s = (d.subs && d.subs.schedule) || null;
+              if (!s) return '每天自动检查';
+              if (!s.enabled) return '自动检查未启用';
+              const next = s.next_run_at ? new Date(s.next_run_at).toLocaleString('zh-CN', { hour12: false }) : '待定';
+              return '每天 ' + String(s.check_hour).padStart(2, '0') + ':00 自动检查 · 下次 ' + next;
+            })()}
+          </span>
         </div>
         <div class="card-body">
           <div class="row gap-8 wrap mb-12">

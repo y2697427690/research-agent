@@ -323,6 +323,9 @@ window.App = window.App || {};
     /* ---- 订阅（关键词定期追踪） ---- */
     subscriptions() { return get('/subscriptions'); },
 
+    /** 调度状态：是否启用、下次检查时间 */
+    subscriptionSchedule() { return get('/subscriptions/schedule'); },
+
     createSubscription(keyword, category) {
       return postJson('/subscriptions', {
         keyword: keyword,

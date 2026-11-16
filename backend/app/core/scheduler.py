@@ -70,3 +70,22 @@ def shutdown_scheduler() -> None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
         logger.info("订阅定时检查已停止")
+
+
+def status() -> dict:
+    """给界面用的调度状态：是否启用、几点跑、下次触发时间。
+
+    为什么单独暴露：定时任务是后台行为，用户在界面上看不到，
+    会以为"订阅只是个列表"。把下次检查时间显示出来，功能才可信。
+    """
+    next_run = None
+    if _scheduler is not None:
+        job = _scheduler.get_job("daily_subscription_check")
+        if job is not None and job.next_run_time is not None:
+            next_run = job.next_run_time.isoformat()
+    return {
+        "enabled": settings.subscription_enabled and _scheduler is not None,
+        "check_hour": settings.subscription_check_hour,
+        "min_interval_hours": settings.subscription_min_interval_hours,
+        "next_run_at": next_run,
+    }

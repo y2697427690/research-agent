@@ -89,6 +89,7 @@ window.App = window.App || {};
         error: null,
         adding: false,       // 正在添加，按钮置灰防连点
         loaded: false,        // 是否已尝试加载过（失败也算，避免反复重试）
+        schedule: null,       // { enabled, check_hour, next_run_at }
         checking: {},        // subscriptionId -> true，正在检查
         removing: {},        // subscriptionId -> true，正在删除
         reasons: {},         // arxivId -> { reason, related } 推荐理由缓存
@@ -504,6 +505,7 @@ window.App = window.App || {};
       try {
         const data = await App.api.subscriptions();
         subs.items = data.items || [];
+        try { subs.schedule = await App.api.subscriptionSchedule(); } catch (e) { /* 状态失败不影响列表 */ }
       } catch (err) {
         subs.error = err.message || '订阅加载失败';
       } finally {

@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import scheduler
 from app.core.exceptions import InvalidRequest, NotFound
 from app.core.logging import get_logger
 from app.db.session import get_db
@@ -137,3 +138,9 @@ async def list_hits(
         )
         for h in hits
     ]
+
+
+@router.get("/schedule", summary="订阅调度状态（是否启用 / 下次检查时间）")
+async def schedule_status() -> dict:
+    """前端展示「下次自动检查 xx」用。"""
+    return scheduler.status()

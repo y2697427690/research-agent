@@ -230,6 +230,7 @@ window.App = window.App || {};
       /* ---- 问答 ---- */
       case 'qa-scope': S.setQaScope(data.scope); break;
       case 'agent-open': App.views.qa.openAgentPanel(); break;
+      case 'export-chat': App.views.qa.exportChat(); break;
       case 'agent-history': App.views.qa.openAgentHistory(); break;
       case 'agent-run': {
         const box = U.$('#agent-q');
