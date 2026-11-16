@@ -754,3 +754,101 @@ async def list_figure_captions(
         if len(items) >= 40:
             break
     return {"paper_id": paper_id, "items": items, "found": bool(items)}
+
+# ---------------------------------------------------------------- 参考文献抓取
+
+
+def _guess_ref_title(text: str) -> str | None:
+    """从一条参考文献里猜出论文标题。
+
+    参考文献是「作者. 标题. 会议/年份.」的拼接，直接整串丢给 arXiv 只会
+    返回关键词偶然重合的论文（实测把 CLIP 的引用匹配成了物理论文）。
+    作者段通常逗号密集、标题段逗号少且大写词占比高，据此挑最长的一段。
+    """
+    segments = re.split(r"(?<=[.!?])\s+", text or "")
+    best = None
+    for seg in segments:
+        seg = seg.strip(" .;,")
+        words = seg.split()
+        if not 3 <= len(words) <= 30:
+            continue
+        if "@" in seg or "http" in seg.lower():
+            continue
+        # 标题段一般比作者段长且逗号少；不再要求大写占比
+        # （"Batch Normalization: Accelerating…" 里小写词多，会把占比拉低）
+        if seg.count(",") > 1:
+            continue
+        # 去掉结尾的年份/会议残留
+        cleaned = re.sub(r"\s+(19|20)\d{2}[a-z]?$|\s+(ICML|NeurIPS|NIPS|CVPR|ICLR|ACL|EMNLP)\b.*$", "", seg).strip()
+        if len(cleaned.split()) >= 3 and (best is None or len(cleaned) > len(best)):
+            best = cleaned
+    return best
+
+
+@router.post("/{paper_id}/references/match", summary="按参考文献标题匹配 arXiv")
+async def match_references(
+    paper_id: str,
+    payload: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """把参考文献的标题拿到 arXiv 上找，返回候选（不直接下载）。
+
+    为什么不在这里直接入库：下载 PDF + 解析 + 分块要十几秒且可能失败，
+    批量做会让请求超时、失败也说不清是哪一篇。匹配与入库分开，
+    前端逐条点「入库」，复用已经验证过的 /discover/ingest 通路。
+    """
+
+    from app.services import discover as discover_service
+
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    body = payload or {}
+    limit = max(1, min(int(body.get("limit") or 6), 10))
+    include_suspicious = bool(body.get("include_suspicious"))
+
+    report = await reference_service.build_references(db, paper_id)
+    candidates = [
+        it for it in report.items
+        if it.text and (include_suspicious or not it.suspicious)
+    ][:limit]
+
+    def norm(s: str) -> str:
+        return " ".join((s or "").lower().split())
+
+    results = []
+    for it in candidates:
+        # 参考文献文本形如 "Ashish Vaswani, ... Attention is all you need. 2017."
+        # 取最长的一段作为标题候选（作者名单通常短、标题较长）
+        guessed = _guess_ref_title(it.text)
+        query = guessed or it.text[:120]
+        try:
+            items = await discover_service.search(query, max_results=2, sort="relevance")
+        except Exception:
+            items = []
+        best = None
+        best_score = 0.0
+        ref_norm = norm(query)
+        for cand in items:
+            title_norm = norm(cand.title)
+            # 用「候选标题的词有多大比例出现在参考文献文本里」打分，
+            # 比整段文本做序列相似度稳：参考文献含作者/年份/期刊，序列相似度会被拉低。
+            words = [w for w in title_norm.split() if len(w) > 2]
+            if not words:
+                continue
+            hit = sum(1 for w in words if w in ref_norm) / len(words)
+            phrase = 1.0 if title_norm[:60] and title_norm[:60] in ref_norm else 0.0
+            score = min(1.0, hit + 0.15 * phrase)
+            if score > best_score:
+                best, best_score = cand, score
+        results.append({
+            "ref_no": it.ref_no,
+            "query": query[:80],
+            "guessed_title": guessed,
+            "matched": bool(best and best_score >= 0.7),
+            "score": round(best_score, 3),
+            "arxiv_id": (best.arxiv_id if best else None),
+            "title": (best.title if best else None),
+        })
+    return {"paper_id": paper_id, "items": results, "total": len(results)}

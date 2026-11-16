@@ -813,6 +813,62 @@ window.App = window.App || {};
   }
 
   /* ==========================================================================
+     5.6 从参考文献抓取原文（匹配 → 逐条入库）
+     ========================================================================== */
+  function openRefFetchModal() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    if (!paperId) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const modal = App.ui.openModal(h`
+      <div class="modal" style="width:820px;max-width:96vw">
+        <div class="modal-head">
+          <div class="modal-title">从参考文献抓取原文</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline">arXiv 匹配</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body" id="reffetch-body">
+          <div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">正在按标题检索 arXiv（约 10~20 秒）…</span></div>
+        </div>
+      </div>`);
+
+    const box = U.$('#reffetch-body', modal.mask);
+    App.api.matchReferences(paperId, 6)
+      .then((res) => {
+        if (!box) return;
+        const items = (res && res.items) || [];
+        const hit = items.filter((x) => x.matched);
+        if (!hit.length) {
+          box.innerHTML = h`<div class="muted small">没有匹配到可下载的原文。可能是作者-年份式引用或该文献未收录在 arXiv。</div>`;
+          return;
+        }
+        box.innerHTML = h`
+          <div class="notice info mb-12"><span>ℹ</span><div>匹配依据是<b>标题相似度</b>（阈值 0.5），可能有误配；入库前请核对标题。</div></div>
+          ${U.raw(hit.map((x) => h`
+            <div class="row gap-8 mb-8" style="align-items:center;padding:8px 10px;background:var(--bg-2);border-radius:8px">
+              <span class="badge badge-outline mono">[${x.ref_no}]</span>
+              <span class="grow small ellipsis" style="min-width:0" title="${x.title || ''}">${x.title || ''}</span>
+              <span class="muted tiny">相似度 ${Math.round(x.score * 100)}%</span>
+              <button class="btn btn-sm btn-primary" data-action="ref-ingest" data-id="${x.arxiv_id}">入库</button>
+            </div>`).join(''))}`;
+        // 逐条入库：直接复用已有的 discoverIngest（含去重与解析）
+        U.$$('[data-action="ref-ingest"]', box).forEach((btn) => {
+          btn.addEventListener('click', () => {
+            btn.disabled = true;
+            btn.textContent = '入库中…';
+            App.store.actions.discoverIngest(btn.dataset.id).then(() => {
+              btn.textContent = '已提交';
+            });
+          });
+        });
+      })
+      .catch((err) => {
+        if (box) box.innerHTML = h`<div class="muted small">匹配失败：${err.message}</div>`;
+      });
+  }
+
+  /* ==========================================================================
      5.5 悬停翻译 / 导出 HTML / 打印为 PDF
      ========================================================================== */
 
@@ -1085,6 +1141,8 @@ ${parts.join('\n')}
         <div class="refs-head">
           <span class="refs-title">参考文献</span>
           <span class="muted tiny">共 ${report.total} 条 · 被正文引用 ${report.cited_total} 条</span>
+            <div class="spacer"></div>
+            <button class="btn btn-sm btn-ghost" data-action="reader-fetch-refs" title="按标题去 arXiv 找这些参考文献的原文">从参考文献抓取</button>
         </div>
         ${note}
         ${U.raw(items.map((it) => refItemHtml(it)).join(''))}
@@ -1317,6 +1375,6 @@ ${parts.join('\n')}
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
-    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal, openFutureModal, exportHtml, exportPdf,
+    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal, openRefFetchModal, openFutureModal, exportHtml, exportPdf,
   };
 })(window.App);

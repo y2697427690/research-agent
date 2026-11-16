@@ -271,6 +271,12 @@ window.App = window.App || {};
     },
 
     /** 图注（Figure N: ...），按页码就近配对图片 */
+    /** 按参考文献标题去 arXiv 匹配（不下载） */
+    matchReferences(paperId, limit) {
+      return postJson('/papers/' + encodeURIComponent(paperId) + '/references/match',
+        { limit: limit || 6 }, 120000);
+    },
+
     paperFigureCaptions(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/figure-captions');
     },

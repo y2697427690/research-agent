@@ -203,6 +203,7 @@ window.App = window.App || {};
       case 'export-md': App.views.reader.exportMarkdown(); break;
       case 'reader-tables': App.views.reader.openTablesModal(); break;
       case 'reader-figures': App.views.reader.openFiguresModal(); break;
+      case 'reader-fetch-refs': App.views.reader.openRefFetchModal(); break;
       case 'reader-future': App.views.reader.openFutureModal(); break;
       case 'export-html': App.views.reader.exportHtml(); break;
       case 'export-pdf': App.views.reader.exportPdf(); break;
