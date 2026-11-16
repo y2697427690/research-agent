@@ -20,6 +20,8 @@ class ReferenceItemOut(BaseModel):
     matched_title: str | None = Field(None, description="匹配到的标题")
     match_method: str = Field("none", description="匹配方式：arxiv / title / none")
     cited_count: int = Field(0, description="正文里引用它的段落数")
+    suspicious: bool = Field(False, description="疑似应付式引用（成串罗列）")
+    evidence: str = Field("", description="判定依据，如「出现在连续引用 [31,2,5] 中」")
     cited_in: list[int] = Field(
         default_factory=list,
         description="引用它的分块序号（升序），前端用来「跳到正文」",

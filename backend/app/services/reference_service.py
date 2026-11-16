@@ -66,6 +66,9 @@ class ReferenceItemView:
     matched_title: str | None = None
     match_method: str = "none"
     cited_in: list[int] = field(default_factory=list)
+    # 是否疑似"应付式引用"（出现在 [12,13,14] 这类成串引用里）
+    suspicious: bool = False
+    evidence: str = ""
 
     @property
     def cited_count(self) -> int:
@@ -100,23 +103,54 @@ async def build_references(db: AsyncSession, paper_id: str) -> list[ReferenceIte
     ).all()
 
     cited_map: dict[int, list[int]] = {}
+    # 判定"疑似应付式"的两个计数器：
+    #   grouped：该编号在「一次括号里有 ≥2 个编号」的段落中出现过几次
+    #   solo   ：该编号在"只有它一个、且同段没有别的编号"的段落中出现过几次
+    # 只有「全部出现都是成串罗列、从未被单独讨论」才算疑似 ——
+    # 学术界成串引用是正常写法（如 [31,2,5]），单凭这一条会冤枉一半文献。
+    grouped: dict[int, int] = {}
+    solo: dict[int, int] = {}
+    group_re = re.compile(r"\[([0-9,，\-–—\s]+)\]")
+
     for chunk_index, text in chunks:
-        for no in extract_cite_numbers(text):
+        nums_in_chunk = extract_cite_numbers(text)
+        for no in nums_in_chunk:
             bucket = cited_map.setdefault(no, [])
             if not bucket or bucket[-1] != chunk_index:
                 bucket.append(chunk_index)
 
+        grouped_here: set[int] = set()
+        for m in group_re.finditer(text):
+            nums = extract_cite_numbers("[" + m.group(1) + "]")
+            if len(nums) >= 2:
+                grouped_here.update(nums)
+        for n in set(nums_in_chunk):
+            if n in grouped_here:
+                grouped[n] = grouped.get(n, 0) + 1
+            else:
+                solo[n] = solo.get(n, 0) + 1
+
     items: list[ReferenceItemView] = []
     for row in rows:
+        no = row.ref_index
+        g_count = grouped.get(no, 0)
+        s_count = solo.get(no, 0)
+        # 只在「成串出现至少 2 段、且从未被单独讨论」时判为疑似
+        is_suspicious = g_count >= 2 and s_count == 0
         items.append(
             ReferenceItemView(
-                ref_no=row.ref_index,
+                ref_no=no,
                 text=re.sub(r"^\s*\[\d+\]\s*", "", row.raw_text or "").strip(),
                 arxiv_id=row.target_arxiv_id,
                 matched_paper_id=row.target_paper_id,
                 matched_title=row.target_title,
                 match_method=row.match_method or "none",
-                cited_in=cited_map.get(row.ref_index, []),
+                cited_in=cited_map.get(no, []),
+                suspicious=is_suspicious,
+                evidence=(
+                    f"仅在成串引用中出现（{g_count} 段），正文无单独讨论"
+                    if is_suspicious else ""
+                ),
             )
         )
     # 判断引用体系：正文里一个 [n] 都没有、参考文献却不少 →

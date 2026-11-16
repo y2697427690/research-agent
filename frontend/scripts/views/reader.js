@@ -1021,6 +1021,9 @@ ${parts.join('\n')}
           <div class="ref-text">${it.text || '（原文缺失）'}</div>
           <div class="muted tiny mt-8">${meta.join(' · ')}</div>
         </div>
+        ${it.suspicious
+          ? U.raw(h`<span class="badge badge-warn" title="${it.evidence || '成串罗列引用'}">疑似应付式</span>`)
+          : ''}
         ${it.cited_count
           ? U.raw(h`<button class="btn btn-sm btn-ghost" data-action="jump-citing"
                       data-ref="${it.ref_no}">跳到正文</button>`)
