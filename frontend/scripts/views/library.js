@@ -525,7 +525,7 @@ window.App = window.App || {};
               <span class="muted tiny">${i === 0 ? '第一作者' : i === (p.authors.length - 1) ? '通讯作者（推定）' : ''}</span>
             </div>`).join(''))}
         </div></div>
-        <div class="muted tiny mt-8">机构：Google Brain / Google Research / University of Toronto（演示数据，来自论文首页脚注）</div>
+        <div class="muted tiny mt-8">机构：未自动抽取（PDF 首页脚注版式差异大，避免误标）</div>
 
         ${U.raw(App.ui.sectionTitle('③ 摘要（Abstract）'))}
         <div class="abstract-box">
