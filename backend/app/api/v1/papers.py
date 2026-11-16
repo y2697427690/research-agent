@@ -589,3 +589,53 @@ async def list_figures(
         FigureOut(page=f.page, width=f.width, height=f.height, ext=f.ext, data_url=f.data_url)
         for f in figures
     ]
+
+# ---------------------------------------------------------------- Future Work 摘录
+
+# 强信号：出现在正文里就基本确定是未来工作段
+FUTURE_STRONG = ("future work", "future research", "in the future", "future directions",
+                 "we leave", "remains open")
+# 弱信号：只在章节名里才算，正文里出现太常见（CLIP/Codex 的普通段落都有 limitations）
+FUTURE_SECTIONS = ("future", "limitation", "discussion", "conclusion")
+
+
+@router.get("/{paper_id}/future-work", summary="Future Work 原文摘录")
+async def list_future_work(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """从正文块里找 Future Work / Limitations 段落，返回原文摘录。
+
+    只摘录、不推理：需求要的是"提取多篇论文的 Future Work"，
+    而"结合时间线排除已被解决的旧 idea"需要领域知识，容易编造，故不做。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+
+    rows = (
+        await db.execute(
+            select(Chunk.chunk_index, Chunk.text, Chunk.section_title, Chunk.page_start)
+            .where(Chunk.paper_id == paper_id)
+            .order_by(Chunk.chunk_index)
+        )
+    ).all()
+
+    items = []
+    for chunk_index, text, section, page in rows:
+        body = (text or "").strip()
+        sec = (section or "").lower()
+        hit = any(k in body.lower() for k in FUTURE_STRONG) or any(
+            k in sec for k in FUTURE_SECTIONS
+        )
+        if hit:
+            items.append({
+                "chunk_index": chunk_index,
+                "section": section or "",
+                "page": page or 1,
+                "text": body[:320],
+            })
+        if len(items) >= 5:
+            break
+
+    return {"paper_id": paper_id, "items": items, "found": bool(items)}

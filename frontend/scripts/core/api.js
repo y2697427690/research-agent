@@ -254,6 +254,12 @@ window.App = window.App || {};
       return get('/papers/' + encodeURIComponent(paperId) + '/figures');
     },
 
+    /** 机构信息（从首页文本提取） */
+    /** Future Work 候选段（关键词摘录，可能有误） */
+    paperFutureWork(paperId) {
+      return get('/papers/' + encodeURIComponent(paperId) + '/future-work');
+    },
+
     paperTables(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/tables');
     },

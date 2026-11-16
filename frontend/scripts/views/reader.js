@@ -289,6 +289,7 @@ window.App = window.App || {};
       <button class="btn btn-sm btn-ghost" data-action="export-md" title="把当前论文导出为 Markdown（含元信息、正文、参考文献）">导出 MD</button>
       <button class="btn btn-sm btn-ghost" data-action="reader-tables" title="抽取论文中的表格（依赖表格框线）">表格</button>
       <button class="btn btn-sm btn-ghost" data-action="reader-figures" title="抽取论文中的插图（仅位图）">图片</button>
+      <button class="btn btn-sm btn-ghost" data-action="reader-future" title="按关键词定位 Future Work 段落">未来工作</button>
       <button class="btn btn-sm btn-ghost" data-action="export-html" title="导出可离线打开的单文件 HTML">导出 HTML</button>
       <button class="btn btn-sm btn-ghost" data-action="export-pdf" title="用浏览器打印为 PDF（另存为 PDF）">打印为 PDF</button>
       <button class="btn btn-sm btn-ghost" data-action="goto-publication" data-id="${paperId}">查看解析详情</button>`);
@@ -884,6 +885,52 @@ ${parts.join('\n')}
   }
 
   /* ==========================================================================
+     5.3.5 未来工作候选段
+     ========================================================================== */
+  function openFutureModal() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    if (!paperId) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const modal = App.ui.openModal(h`
+      <div class="modal" style="width:840px;max-width:96vw">
+        <div class="modal-head">
+          <div class="modal-title">未来工作候选段</div>
+          <div class="spacer"></div>
+          <span class="badge badge-warn">关键词匹配</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body" id="future-body">
+          <div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">正在定位…</span></div>
+        </div>
+      </div>`);
+
+    const box = U.$('#future-body', modal.mask);
+    App.api.paperFutureWork(paperId)
+      .then((res) => {
+        if (!box) return;
+        const items = (res && res.items) || [];
+        if (!items.length) {
+          box.innerHTML = h`<div class="muted small">没有找到 Future Work / Limitations 相关段落（该论文可能没有专章，或表述不同）。</div>`;
+          return;
+        }
+        box.innerHTML = h`
+          <div class="notice warn mb-12"><span>!</span><div>下面是按关键词（future work / we leave / limitations…）筛出的<b>候选段落</b>，可能包含误命中，请以原文为准。</div></div>
+          ${U.raw(items.map((it) => h`
+            <div class="mb-12" style="padding:10px 12px;background:var(--bg-2);border-radius:8px">
+              <div class="row gap-8 mb-8">
+                <span class="badge badge-outline mono">第 ${it.page} 页</span>
+                ${it.section ? U.raw(h`<span class="muted tiny ellipsis">${it.section}</span>`) : ''}
+              </div>
+              <div class="small" style="line-height:1.8">${it.text}</div>
+            </div>`).join(''))}`;
+      })
+      .catch((err) => {
+        if (box) box.innerHTML = h`<div class="muted small">定位失败：${err.message}</div>`;
+      });
+  }
+
+  /* ==========================================================================
      5.4 参考文献（双向跳转）
      --------------------------------------------------------------------------
      两个方向：
@@ -1252,6 +1299,6 @@ ${parts.join('\n')}
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
-    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal, exportHtml, exportPdf,
+    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal, openFutureModal, exportHtml, exportPdf,
   };
 })(window.App);
