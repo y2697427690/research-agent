@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.paper import Paper
-from app.services import chunk_service, paper_service
+from app.services import chunk_service, ocr_service, paper_service
 from app.services.pdf_parser import ParsedDocument, parse_pdf
 
 logger = get_logger(__name__)
@@ -100,6 +100,24 @@ async def parse_paper(db: AsyncSession, paper_id: str) -> ParseOutcome:
     logger.info("开始解析 %s（%s）", paper_id, abs_path)
 
     doc = await _parse_in_thread(str(abs_path))
+
+    # 扫描件兜底：没有文本层时用 OCR 识别前若干页。
+    # 只填 page_texts / full_text，让原有分块流程照常工作；
+    # 状态仍标 need_review —— OCR 一定有错，不能假装解析干净。
+    if (doc.is_scanned or not doc.page_texts) and ocr_service.is_available():
+        pages = await anyio.to_thread.run_sync(
+            lambda: ocr_service.ocr_pdf(str(abs_path), max_pages=12)
+        )
+        if pages:
+            for item in pages:
+                doc.page_texts[item.page] = item.text
+            doc.full_text = "\n\n".join(doc.page_texts[k] for k in sorted(doc.page_texts))
+            doc.page_count = max(doc.page_count, max(doc.page_texts))
+            doc.quality = max(doc.quality, 0.55)
+            doc.needs_review = True
+            doc.warnings.append(f"扫描件：已用 OCR 识别前 {len(pages)} 页，文字需校对")
+            logger.info("OCR 完成 %s：%d 页", paper_id, len(pages))
+
     _apply_result(paper, doc)
     await db.flush()
 
