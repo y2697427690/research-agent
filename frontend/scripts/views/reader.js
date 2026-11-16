@@ -130,6 +130,7 @@ window.App = window.App || {};
 
     if (doc) bindReader(el, doc, paper);
     bindSelection(el);
+    bindHoverTranslate(el);
 
     // 还原滚动位置（同一篇论文内）；切换论文时从头开始
     if (prevPaper === paperId && prevScroll > 0) {
@@ -289,6 +290,8 @@ window.App = window.App || {};
       <button class="btn btn-sm btn-ghost" data-action="export-md" title="把当前论文导出为 Markdown（含元信息、正文、参考文献）">导出 MD</button>
       <button class="btn btn-sm btn-ghost" data-action="reader-tables" title="抽取论文中的表格（依赖表格框线）">表格</button>
       <button class="btn btn-sm btn-ghost" data-action="reader-figures" title="抽取论文中的插图（仅位图）">图片</button>
+      <button class="btn btn-sm btn-ghost" data-action="export-html" title="导出可离线打开的单文件 HTML">导出 HTML</button>
+      <button class="btn btn-sm btn-ghost" data-action="export-pdf" title="用浏览器打印为 PDF（另存为 PDF）">打印为 PDF</button>
       <button class="btn btn-sm btn-ghost" data-action="goto-publication" data-id="${paperId}">查看解析详情</button>`);
   }
 
@@ -795,6 +798,158 @@ window.App = window.App || {};
   }
 
   /* ==========================================================================
+     5.5 悬停翻译 / 导出 HTML / 打印为 PDF
+     ========================================================================== */
+
+  /** 悬停翻译缓存：同一段只译一次，避免鼠标划过就烧钱 */
+  const hoverCache = {};
+
+  /**
+   * 段落级悬停翻译。
+   *
+   * 为什么不逐词：逐词要给每段切 span，DOM 体积翻十倍，且译文断句很差。
+   * 段落级既省请求又更像"理解"，与划词翻译（精确到选中的短语）互补。
+   */
+  function bindHoverTranslate(el) {
+    const box = U.$('#body-en', el);
+    if (!box) return;
+
+    let timer = null;
+    let pop = null;
+
+    const hide = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (pop) { pop.remove(); pop = null; }
+    };
+
+    const show = (target, text) => {
+      hide();
+      pop = document.createElement('div');
+      pop.className = 'hover-pop';
+      pop.textContent = '翻译中…';
+      const rect = target.getBoundingClientRect();
+      pop.style.left = Math.min(window.innerWidth - 380, Math.max(12, rect.left)) + 'px';
+      pop.style.top = (rect.bottom + 6) + 'px';
+      document.body.appendChild(pop);
+
+      const key = text.slice(0, 200);
+      if (hoverCache[key]) { pop.textContent = hoverCache[key]; return; }
+
+      App.api.translateText(text, 'en2zh')
+        .then((res) => {
+          const zh = (res && res.text) || '';
+          hoverCache[key] = zh;
+          if (pop && pop.isConnected) pop.textContent = zh;
+        })
+        .catch(() => {
+          if (pop) pop.textContent = '（翻译失败，可改用划词翻译）';
+        });
+    };
+
+    box.addEventListener('mouseover', (e) => {
+      const p = e.target.closest('p, .doc-p, li');
+      if (!p || !box.contains(p)) return;
+      const text = (p.innerText || p.textContent || '').trim();
+      if (text.length < 20) return;
+      if (timer) clearTimeout(timer);
+      // 250ms 防抖：鼠标快速划过时不发请求
+      timer = setTimeout(() => show(p, text), 250);
+    });
+
+    box.addEventListener('mouseout', (e) => {
+      const p = e.target.closest('p, .doc-p, li');
+      if (!p) return;
+      // 移到浮层上不算离开
+      if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.hover-pop')) return;
+      hide();
+    });
+    box.addEventListener('scroll', hide, { passive: true });
+  }
+
+  /** 把当前文档拼成可离线打开的单文件 HTML */
+  function buildExportHtml(paper, doc, report) {
+    const parts = [];
+    parts.push(`<h1>${U.esc(paper.title || paper.fileName || '论文')}</h1>`);
+    const meta = [];
+    if (paper.authors && paper.authors.length) meta.push('作者：' + paper.authors.join(', '));
+    if (paper.year) meta.push('年份：' + paper.year);
+    if (paper.venue) meta.push('来源：' + paper.venue);
+    if (paper.arxiv) meta.push('arXiv：' + paper.arxiv);
+    if (meta.length) parts.push(`<p class="meta">${U.esc(meta.join(' · '))}</p>`);
+
+    (doc && doc.blocks ? doc.blocks : []).forEach((b) => {
+      const t = String(b.en || '').trim();
+      if (!t) return;
+      if (b.type === 'h1') parts.push(`<h2>${U.esc(t)}</h2>`);
+      else if (b.type === 'h2') parts.push(`<h3>${U.esc(t)}</h3>`);
+      else if (b.type === 'h3') parts.push(`<h4>${U.esc(t)}</h4>`);
+      else if (b.type === 'list') parts.push('<ul>' + t.split('\n').map((x) => `<li>${U.esc(x.replace(/^•\s*/, ''))}</li>`).join('') + '</ul>');
+      else if (b.type === 'formula') parts.push(`<pre class="formula">${U.esc(t)}</pre>`);
+      else if (b.type === 'reference') parts.push(`<p class="ref">[${U.esc(String(b.refNo || ''))}] ${U.esc(t)}</p>`);
+      else parts.push(`<p>${U.esc(t)}</p>`);
+    });
+
+    if (report && report.items && report.items.length) {
+      parts.push('<h2>参考文献</h2><ol class="refs">');
+      report.items.forEach((it) => {
+        parts.push(`<li>${U.esc(it.text || '')}</li>`);
+      });
+      parts.push('</ol>');
+    }
+
+    return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" />
+<title>${U.esc(paper.title || paper.fileName || '论文')}</title>
+<style>
+body{max-width:820px;margin:36px auto;padding:0 20px;font:16px/1.85 -apple-system,"Segoe UI",system-ui,sans-serif;color:#1c2333}
+h1{font-size:26px;margin:0 0 6px}h2{font-size:20px;margin:28px 0 10px}h3{font-size:17px;margin:22px 0 8px}h4{font-size:15px;margin:18px 0 6px}
+.meta{color:#5b6577;font-size:13px;margin-bottom:22px}
+p{margin:0 0 14px;text-align:justify}
+.formula{background:#f4f6fa;padding:12px;border-radius:8px;overflow:auto;font-size:13px}
+.ref{font-size:13px;color:#3d4757;margin:0 0 8px}
+.refs{font-size:13.5px;line-height:1.7}
+footer{margin-top:36px;color:#8b95a7;font-size:12px;border-top:1px solid #e3e8f0;padding-top:10px}
+@media print{body{margin:0;font-size:12pt}}
+</style></head><body>
+${parts.join('\n')}
+<footer>由「科研小助手 Agent」导出 · ${new Date().toISOString().slice(0, 10)}</footer>
+</body></html>`;
+  }
+
+  /** 导出单文件 HTML */
+  function exportHtml() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    const paper = paperId ? App.data.getPaper(paperId) : null;
+    if (!paper) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const doc = App.data.getDoc(paperId);
+    const report = refState.paperId === paperId ? refState.report : null;
+    const html = buildExportHtml(paper, doc, report);
+    const name = U.safeFileName(paper.title || paper.fileName || 'paper') + '.html';
+    U.download(name, html, 'text/html;charset=utf-8');
+    App.ui.toast('已导出 ' + name + '（可用浏览器打开后打印为 PDF）', 'ok', 3200);
+  }
+
+  /** 打印为 PDF：把同一份 HTML 放进新窗口，交给浏览器打印 */
+  function exportPdf() {
+    const st = App.store.state;
+    const paperId = st.currentPaperId || st.routeParams.paperId;
+    const paper = paperId ? App.data.getPaper(paperId) : null;
+    if (!paper) { App.ui.toast('请先打开一篇论文', 'warn'); return; }
+
+    const doc = App.data.getDoc(paperId);
+    const report = refState.paperId === paperId ? refState.report : null;
+    const html = buildExportHtml(paper, doc, report);
+
+    const win = window.open('', '_blank');
+    if (!win) { App.ui.toast('浏览器拦截了新窗口，请允许弹窗后重试', 'warn', 3600); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { try { win.focus(); win.print(); } catch (e) { /* 用户可手动打印 */ } }, 400);
+    App.ui.toast('已打开打印窗口：目标选「另存为 PDF」即可', 'ok', 4000);
+  }
+
+  /* ==========================================================================
      5.4 参考文献（双向跳转）
      --------------------------------------------------------------------------
      两个方向：
@@ -1163,6 +1318,6 @@ window.App = window.App || {};
   App.views.reader = {
     render, toolbar, scrollToAnchor, scrollToRef, gotoPublication,
     translateSelection, copy, applyFocusEvidence,
-    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal,
+    jumpToCiting, retryReferences, exportMarkdown, openTablesModal, openFiguresModal, exportHtml, exportPdf,
   };
 })(window.App);

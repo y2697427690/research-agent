@@ -202,6 +202,8 @@ window.App = window.App || {};
       case 'export-md': App.views.reader.exportMarkdown(); break;
       case 'reader-tables': App.views.reader.openTablesModal(); break;
       case 'reader-figures': App.views.reader.openFiguresModal(); break;
+      case 'export-html': App.views.reader.exportHtml(); break;
+      case 'export-pdf': App.views.reader.exportPdf(); break;
       case 'goto-anchor': S.gotoAnchor(data.id); App.views.reader.scrollToAnchor(data.id); break;
       case 'goto-publication': App.views.reader.gotoPublication(data.id); break;
       case 'open-ref-paper': S.openPaper(data.id); break;
