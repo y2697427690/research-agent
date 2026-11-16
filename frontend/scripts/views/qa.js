@@ -211,6 +211,72 @@ window.App = window.App || {};
       ${U.raw(steps)}`;
   }
 
+
+  /**
+   * 把一次执行（无论来自刚跑完还是历史记录）渲染成轨迹 HTML。
+   * 单独抽出来，是因为历史回放与实时结果必须长得一样，
+   * 否则用户会怀疑"历史记录是不是另一套东西"。
+   */
+  function traceHtml(steps, answer, title) {
+    const list = steps || [];
+    return h`
+      ${title ? U.raw(h`<div class="muted tiny mb-8">${title}</div>`) : ''}
+      <div class="agent-answer">
+        <div class="muted tiny mb-8">回答</div>
+        <div class="abstract-zh" style="line-height:1.9">${answer || ''}</div>
+      </div>
+      <div class="muted tiny mt-16 mb-8">执行轨迹（${list.length} 步）</div>
+      ${U.raw(list.map((s) => h`
+        <div class="agent-step">
+          <div class="row gap-8" style="align-items:center">
+            <span class="badge mono ${s.tool === 'final' ? 'badge-ok' : s.ok ? 'badge-outline' : 'badge-danger'}">${s.tool || '格式'}</span>
+            <span class="muted tiny">第 ${s.index} 步</span>
+          </div>
+          <div class="agent-thought">${s.thought || '（无思考）'}</div>
+        </div>`).join(''))}`;
+  }
+
+  /** 历史轨迹面板：列出最近执行，点一条回放（轨迹已落库，刷新后仍在） */
+  function openAgentHistory() {
+    const modal = App.ui.openModal(h`
+      <div class="modal" style="width:820px;max-width:96vw">
+        <div class="modal-head">
+          <div class="modal-title">Agent 历史轨迹</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline">已落库</span>
+          <button class="btn btn-sm btn-ghost" data-close>✕</button>
+        </div>
+        <div class="modal-body" id="agent-hist-body">
+          <div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span><span class="muted small">加载中…</span></div>
+        </div>
+      </div>`);
+    const box = U.$('#agent-hist-body', modal.mask);
+    App.api.agentHistory(10).then((res) => {
+      const items = (res && res.items) || [];
+      if (!box) return;
+      if (!items.length) {
+        box.innerHTML = h`<div class="muted small">还没有历史执行记录。</div>`;
+        return;
+      }
+      box.innerHTML = h`
+        <div class="muted tiny mb-12">共 ${items.length} 条，点一条回放完整轨迹</div>
+        ${U.raw(items.map((r) => h`
+          <button class="btn btn-sm btn-ghost" data-run="${r.id}" style="width:100%;text-align:left;margin-bottom:6px">
+            ${U.clip(r.question, 46)}
+            <span class="muted tiny">· ${r.tool_calls} 次工具 · ${r.step_count} 步</span>
+          </button>`).join(''))}`;
+      U.$$('[data-run]', box).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          App.api.agentHistoryDetail(btn.dataset.run).then((d) => {
+            box.innerHTML = traceHtml(d.steps, d.answer, '历史记录：' + d.question);
+          });
+        });
+      });
+    }).catch(() => {
+      if (box) box.innerHTML = h`<div class="muted small">加载失败</div>`;
+    });
+  }
+
   /** 侧栏入口：只放一个按钮，真正的面板在弹窗里 */
   function agentCard(st) {
     const a = st.qa.agent || null;
@@ -226,7 +292,10 @@ window.App = window.App || {};
         </div>
         <div class="card-body tight">
           <div class="muted tiny mb-8">${hint}</div>
-          <button class="btn btn-sm btn-primary" style="width:100%" data-action="agent-open">打开 Agent 面板</button>
+          <div class="row gap-6">
+            <button class="btn btn-sm btn-primary grow" data-action="agent-open">打开 Agent 面板</button>
+            <button class="btn btn-sm btn-ghost" data-action="agent-history">历史轨迹</button>
+          </div>
         </div>
       </div>`);
   }
@@ -603,5 +672,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard, agentBody, openAgentPanel, refreshAgentPanel };
+  App.views.qa = { render, ask, sendFromInput, jumpEvidence, agentCard, agentBody, openAgentPanel, refreshAgentPanel, openAgentHistory };
 })(window.App);

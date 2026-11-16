@@ -348,6 +348,16 @@ window.App = window.App || {};
     /* ---- Agent ---- */
     agentTools() { return get('/agent/tools'); },
 
+    /** 最近执行列表（轨迹已落库，刷新后仍可回放） */
+    agentHistory(limit) {
+      return get('/agent/history?limit=' + (limit || 8));
+    },
+
+    /** 某次执行的完整轨迹 */
+    agentHistoryDetail(runId) {
+      return get('/agent/history/' + encodeURIComponent(runId));
+    },
+
     /** Agent 多步执行：返回 steps（thought/tool/args/observation）+ answer */
     agentRun(question, maxSteps) {
       return postJson('/agent/run', { question: question, max_steps: maxSteps || 4 }, 120000);
