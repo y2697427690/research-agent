@@ -1133,6 +1133,23 @@ window.App = window.App || {};
 
     /* ===== 写作助手 ===== */
     setWritingTab(tab) { state.writing.tab = tab; notify('writing'); },
+
+    /** 生成架构图代码：成功后写进 state.writing.diagram */
+    async generateDiagram(idea, format) {
+      if (!String(idea || '').trim()) { App.ui.toast('请先输入论文方法描述', 'warn', 2000); return; }
+      state.writing.diagram = { loading: true, format: format };
+      notify('writing');
+      try {
+        const res = await App.api.writingDiagram(idea, format);
+        state.writing.diagram = { format: format, code: res.code || '', empty: !!res.empty };
+        if (res.empty) App.ui.toast('模型没有返回代码，请换个描述重试', 'warn', 3000);
+      } catch (err) {
+        state.writing.diagram = null;
+        App.ui.toast('生成失败：' + err.message, 'error', 3600);
+      } finally {
+        notify('writing');
+      }
+    },
     setIdea(v) { state.writing.idea = v; },
     async generateOutline(idea) {
       state.writing.running = true;

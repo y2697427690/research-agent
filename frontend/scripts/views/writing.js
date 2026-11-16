@@ -149,15 +149,28 @@ window.App = window.App || {};
      ========================================================================== */
   function renderDiagram(body) {
     const p = App.data.writerPresets;
-    const code = diagramKind === 'mermaid' ? p.mermaid : diagramKind === 'tikz' ? p.tikz : p.graphviz;
+    const gen = App.store.state.writing.diagram || null;
+    // 模型生成的代码优先（graphviz 在格式名上映射到 dot）
+    const genFmt = gen && gen.format === 'graphviz' ? 'dot' : (gen && gen.format);
+    const useGen = !!(gen && gen.code && genFmt === diagramKind);
+    const code = useGen
+      ? gen.code
+      : (diagramKind === 'mermaid' ? p.mermaid : diagramKind === 'tikz' ? p.tikz : p.graphviz);
 
     body.innerHTML = h`
       <div class="notice info mb-16">
         <span>ℹ</span>
         <div>
-          把论文的逻辑结构（研究问题 → 方法 → 实验 → 结论）直接转成可编译的绘图代码。
-          三种输出格式覆盖 LaTeX 论文（TikZ）、通用排版（Graphviz DOT）与网页 / Markdown（Mermaid）。
+          把论文的逻辑结构（研究问题 → 方法 → 实验 → 结论）转成可编译的绘图代码。
+          填写下方描述并点「用模型生成」，会调用真实模型输出对应格式的代码；不填时显示预置示例。
         </div>
+      </div>
+
+      <div class="row gap-8 mb-12">
+        <input class="input" id="dgm-idea" placeholder="论文方法一句话，如：多模态检索 + 引用溯源的 RAG 流程" style="flex:1;min-width:0" />
+        <button class="btn btn-primary" data-action="gen-diagram" data-format="${diagramKind}">
+          ${gen && gen.loading ? '生成中…' : '用模型生成'}
+        </button>
       </div>
 
       <div class="row gap-8 mb-16">
@@ -169,7 +182,7 @@ window.App = window.App || {};
       <div class="grid grid-2">
         <div class="card">
           <div class="card-head">
-            <div class="card-title">生成的绘图代码</div>
+            <div class="card-title">${useGen ? '模型生成的代码' : '预置示例代码'}</div>
             <div class="spacer"></div>
             <button class="btn btn-sm btn-ghost" data-action="copy-code">复制代码</button>
           </div>
@@ -220,7 +233,9 @@ window.App = window.App || {};
               <div class="muted tiny">${s.d}</div>
             </div>
           </div>
-          ${i < steps.length - 1 ? '<div class="flow-arrow">↓</div>' : ''}`).join(''))}
+          ${i < steps.length - 1
+            ? U.raw(h`<div class="flow-arrow">↓</div>`)
+            : ''}`).join(''))}
       </div>`);
   }
 
@@ -368,9 +383,18 @@ window.App = window.App || {};
      5. ④ 中译英
      ========================================================================== */
   function renderTranslate(body) {
-    const zh = App.data.getPaper('p-attention-v7').abstractZh;
-    const en = App.data.getPaper('p-attention-v7').abstract;
-    const out = App.writer.translateAbstract(zh);
+    // 以前固定取演示论文 p-attention-v7，真实库里没有这个 id 时这里会抛 null 错误，
+    // 整个「④ 中译英」tab 直接白屏。改为：先找演示数据，再退回库内第一篇，
+    // 都没有就用一段内置中文摘要，保证 tab 永远能打开。
+    const demo = App.data.getPaper('p-attention-v7');
+    const first = (App.store.state.papers || [])[0];
+    const fallbackZh = '本文提出一种基于检索增强的科研助手，通过混合检索与强制引用降低大模型幻觉，'
+      + '并在阅读器中支持引用与参考文献的双向跳转。';
+    const zh = (demo && demo.abstractZh) || (first && first.abstractZh) || fallbackZh;
+    const en = (demo && demo.abstract) || '';
+    // 初始不预填译文：本地术语表拼出来的中英混排会误导人（实测出现过
+    // "We propose一种based on检索增强…"）。让用户点按钮走真实模型。
+    const out = '';
 
     body.innerHTML = h`
       <div class="notice info mb-16">
@@ -396,8 +420,7 @@ window.App = window.App || {};
               <button class="btn btn-ghost" id="use-lib-abstract">重新载入文库摘要</button>
             </div>
             <div class="muted tiny mt-8">
-              提交到 <code>POST /api/v1/translate</code>，由模型输出译文；
-              服务端不落库，只在内存里缓存最近 200 段，重启即失效。
+              提交到 <code>POST /api/v1/translate</code>，由模型输出译文。
             </div>
           </div>
         </div>
@@ -406,14 +429,13 @@ window.App = window.App || {};
           <div class="card-head">
             <div class="card-title">英文译文</div>
             <div class="spacer"></div>
-            <span class="badge badge-brand" id="en-badge">模型翻译</span>
+            <span class="badge badge-brand" id="en-badge">待翻译</span>
           </div>
           <div class="card-body">
-            <div class="abstract-en" id="en-out" style="min-height:180px">${out}</div>
-            <div class="muted tiny mt-12">
-              参考：论文原始英文摘要（可对比翻译质量）
-            </div>
-            <div class="caption-box mt-8">${en}</div>
+            <div class="abstract-en" id="en-out" style="min-height:180px">${out || '（尚未翻译。点「翻译为英文」调用模型，译文会显示在这里）'}</div>
+            ${demo ? U.raw(h`
+              <div class="muted tiny mt-12">参考：演示论文的原始英文摘要（可对比翻译质量）</div>
+              <div class="caption-box mt-8">${demo.abstract}</div>`) : ''}
           </div>
         </div>
       </div>

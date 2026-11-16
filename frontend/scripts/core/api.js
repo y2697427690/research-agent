@@ -354,6 +354,11 @@ window.App = window.App || {};
     },
 
     /** 写作助手：生成论文框架（后端模型 + 库内参考文献白名单） */
+    /** 写作助手：生成架构图代码（tikz / dot / mermaid / matplotlib） */
+    writingDiagram(idea, format) {
+      return postJson('/writing/diagram', { idea: idea, format: format }, 120000);
+    },
+
     writingOutline(idea) {
       return postJson('/writing/outline', { idea: idea }, 120000);
     },

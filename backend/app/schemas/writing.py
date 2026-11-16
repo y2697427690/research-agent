@@ -26,3 +26,14 @@ class OutlineOut(BaseModel):
     references: list[OutlineRef] = Field(default_factory=list)
     candidates: list[dict] = Field(default_factory=list)
     degraded: bool = Field(False, description="模型未按 JSON 返回时为 true")
+
+
+class DiagramIn(BaseModel):
+    idea: str = Field(..., min_length=2, max_length=500)
+    format: str = Field("mermaid", description="tikz / dot / mermaid / matplotlib")
+
+
+class DiagramOut(BaseModel):
+    format: str
+    code: str = ""
+    empty: bool = False

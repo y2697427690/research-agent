@@ -159,6 +159,11 @@ window.App = window.App || {};
     switch (action) {
       /* ---- 全局 ---- */
       case 'go': S.go(data.route, data); break;
+      case 'gen-diagram': {
+        const box = U.$('#dgm-idea');
+        S.generateDiagram(box ? box.value : '', data.format || 'mermaid');
+        break;
+      }
       case 'vote-paper': S.votePaper(data.id, parseInt(data.value, 10)); break;
       case 'open-paper': S.drawer(null); S.openPaper(data.id); break;   // 先收抽屉，否则阅读器被压在遮罩下
       // 引用卡片里的「跳转原文」：打开论文并定位到该片段

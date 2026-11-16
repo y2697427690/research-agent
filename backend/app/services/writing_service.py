@@ -94,3 +94,40 @@ async def build_outline(db: AsyncSession, idea: str) -> dict:
         "candidates": [{"title": t, "paper_id": pid} for pid, t in titles[:8]],
         "degraded": not bool(data.get("sections")),
     }
+
+
+DIAGRAM_PROMPTS = {
+    "tikz": "生成可直接编译的 LaTeX TikZ 代码，画论文方法架构图",
+    "dot": "生成 Graphviz DOT 代码，画论文方法架构图",
+    "mermaid": "生成 Mermaid flowchart 代码，画论文方法架构图",
+    "matplotlib": "生成 Python matplotlib 代码，画论文方法架构图",
+}
+
+
+async def build_diagram(db: AsyncSession, idea: str, fmt: str = "mermaid") -> dict:
+    """按指定格式生成架构图代码。
+
+    只返回代码本身（剥掉模型爱加的 ` 围栏），前端直接展示/复制。
+    不做“预览渲染”：TikZ/Graphviz 需要本地工具链，预览会误导用户以为能跑。
+    """
+    fmt = fmt if fmt in DIAGRAM_PROMPTS else "mermaid"
+    raw = await llm.chat(
+        [
+            {"role": "system", "content": (
+                "你是论文绘图助手。" + DIAGRAM_PROMPTS[fmt] +
+                "。只输出代码，不要解释；代码要能直接运行。"
+            )},
+            {"role": "user", "content": f"论文想法：{idea[:400]}"},
+        ],
+        temperature=0.3,
+    )
+    code = (raw or "").strip()
+    # 剥掉 `lang ... ` 围栏
+    if code.startswith("`"):
+        lines = code.splitlines()
+        if lines and lines[0].startswith("`"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("`"):
+            lines = lines[:-1]
+        code = "\n".join(lines).strip()
+    return {"format": fmt, "code": code[:4000], "empty": not bool(code)}

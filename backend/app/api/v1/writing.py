@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import InvalidRequest
 from app.core.logging import get_logger
 from app.db.session import get_db
-from app.schemas.writing import OutlineIn, OutlineOut
+from app.schemas.writing import DiagramIn, DiagramOut, OutlineIn, OutlineOut
 from app.services import writing_service
 
 logger = get_logger(__name__)
@@ -32,3 +32,17 @@ async def generate_outline(
         logger.warning("框架生成失败：%s", exc)
         raise InvalidRequest("框架生成失败，请稍后重试") from exc
     return OutlineOut(**result)
+
+
+@router.post("/diagram", response_model=DiagramOut, summary="生成架构图代码（TikZ/DOT/Mermaid/Matplotlib）")
+async def generate_diagram(
+    payload: DiagramIn,
+    db: AsyncSession = Depends(get_db),
+) -> DiagramOut:
+    """真实模型生成代码，替换原来的前端模板。"""
+    try:
+        result = await writing_service.build_diagram(db, payload.idea, payload.format)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("架构图生成失败：%s", exc)
+        raise InvalidRequest("架构图生成失败，请稍后重试") from exc
+    return DiagramOut(**result)
