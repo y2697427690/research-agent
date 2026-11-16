@@ -1088,18 +1088,3 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
 }
 
 
-/* ---- 悬停翻译浮层：固定定位，不随滚动跑偏 ---- */
-.hover-pop {
-  position: fixed;
-  z-index: 60;
-  max-width: 360px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--bg-1);
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--sh-2);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text-1);
-  pointer-events: none;
-}

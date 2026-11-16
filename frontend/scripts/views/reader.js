@@ -130,7 +130,6 @@ window.App = window.App || {};
 
     if (doc) bindReader(el, doc, paper);
     bindSelection(el);
-    bindHoverTranslate(el);
 
     // 还原滚动位置（同一篇论文内）；切换论文时从头开始
     if (prevPaper === paperId && prevScroll > 0) {
@@ -800,71 +799,6 @@ window.App = window.App || {};
   /* ==========================================================================
      5.5 悬停翻译 / 导出 HTML / 打印为 PDF
      ========================================================================== */
-
-  /** 悬停翻译缓存：同一段只译一次，避免鼠标划过就烧钱 */
-  const hoverCache = {};
-
-  /**
-   * 段落级悬停翻译。
-   *
-   * 为什么不逐词：逐词要给每段切 span，DOM 体积翻十倍，且译文断句很差。
-   * 段落级既省请求又更像"理解"，与划词翻译（精确到选中的短语）互补。
-   */
-  function bindHoverTranslate(el) {
-    const box = U.$('#body-en', el);
-    if (!box) return;
-
-    let timer = null;
-    let pop = null;
-
-    const hide = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
-      if (pop) { pop.remove(); pop = null; }
-    };
-
-    const show = (target, text) => {
-      hide();
-      pop = document.createElement('div');
-      pop.className = 'hover-pop';
-      pop.textContent = '翻译中…';
-      const rect = target.getBoundingClientRect();
-      pop.style.left = Math.min(window.innerWidth - 380, Math.max(12, rect.left)) + 'px';
-      pop.style.top = (rect.bottom + 6) + 'px';
-      document.body.appendChild(pop);
-
-      const key = text.slice(0, 200);
-      if (hoverCache[key]) { pop.textContent = hoverCache[key]; return; }
-
-      App.api.translateText(text, 'en2zh')
-        .then((res) => {
-          const zh = (res && res.text) || '';
-          hoverCache[key] = zh;
-          if (pop && pop.isConnected) pop.textContent = zh;
-        })
-        .catch(() => {
-          if (pop) pop.textContent = '（翻译失败，可改用划词翻译）';
-        });
-    };
-
-    box.addEventListener('mouseover', (e) => {
-      const p = e.target.closest('p, .doc-p, li');
-      if (!p || !box.contains(p)) return;
-      const text = (p.innerText || p.textContent || '').trim();
-      if (text.length < 20) return;
-      if (timer) clearTimeout(timer);
-      // 250ms 防抖：鼠标快速划过时不发请求
-      timer = setTimeout(() => show(p, text), 250);
-    });
-
-    box.addEventListener('mouseout', (e) => {
-      const p = e.target.closest('p, .doc-p, li');
-      if (!p) return;
-      // 移到浮层上不算离开
-      if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.hover-pop')) return;
-      hide();
-    });
-    box.addEventListener('scroll', hide, { passive: true });
-  }
 
   /** 把当前文档拼成可离线打开的单文件 HTML */
   function buildExportHtml(paper, doc, report) {
