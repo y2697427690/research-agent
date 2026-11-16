@@ -433,6 +433,17 @@ window.App = window.App || {};
         App.store.actions.toggleStar(tr.querySelector('[data-id]').dataset.id);
       });
     });
+
+    // 赞/踩：直接绑定，不依赖全局委托。
+    // 行首那个 <td> 本身是 data-action="parse-detail"，
+    // 冒泡时容易被行级动作先接走，表现就是"点了没反应"。
+    U.$$('[data-action="vote-paper"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        App.store.actions.votePaper(btn.dataset.id, parseInt(btn.dataset.value, 10));
+      });
+    });
   }
 
   /**
