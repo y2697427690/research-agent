@@ -360,7 +360,7 @@ window.App = window.App || {};
         </div>
         <div class="modal-body">${U.raw(body)}</div>
         <div class="modal-foot">
-          <span class="muted tiny">对应需求 1.1.1：提示用户选择保留哪个版本</span>
+          <span class="muted tiny">提示用户选择保留哪个版本</span>
           <div class="spacer"></div>
           <button class="btn btn-ghost" data-close>稍后处理</button>
           <button class="btn btn-ghost" data-keep-both>两份都保留</button>

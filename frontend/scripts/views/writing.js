@@ -138,9 +138,6 @@ window.App = window.App || {};
           </table>
         </div>
         <div class="card-foot muted tiny">
-          核验逻辑：先在文库内做「标题 + 作者 + 年份」三元组匹配，命中则标记为已验证；
-          未命中的条目会调用 Crossref / arXiv API 校验 DOI 与 arXiv 号是否存在，避免出现不存在的文献。
-        </div>
       </div>`);
   }
 
@@ -352,7 +349,7 @@ window.App = window.App || {};
             <div class="caption-box">${caption}</div>
             <div class="muted tiny mt-12">
               说明：Caption 不只描述图表内容，还自动提炼趋势结论（最高/最低项、首末变化），
-              符合学术论文图注的写作规范 —— 对应需求 1.6.3。
+              符合学术论文图注的写作规范。
             </div>
           </div>
         </div>

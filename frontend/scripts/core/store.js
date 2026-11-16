@@ -1079,7 +1079,12 @@ window.App = window.App || {};
       try {
         const res = await App.api.ingestArxiv(arxivId, force);
 
-        if (!res.accepted) {
+        // 订阅命中项也要标记：之前只标了搜索结果的 discover.items，
+      // 导致订阅列表里点完“入库并解析”按钮文案不变（用户以为没生效）。
+      state.discover.subs.items.forEach((sub) => (sub.latest || []).forEach((h) => {
+        if (h.arxiv_id === arxivId) h.in_library = true;
+      }));
+      if (!res.accepted) {
           // 检出重复：如实告诉用户与哪篇重复，并提示可强制入库
           App.ui.toast(
             (res.duplicate && res.duplicate.message) || res.message || '已存在相同论文',

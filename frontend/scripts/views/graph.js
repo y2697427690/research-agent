@@ -83,10 +83,10 @@ window.App = window.App || {};
         <aside class="graph-side" id="gside"></aside>
       </div>
 
-      ${App.ui.sectionTitle('核心节点挖掘', '<span class="muted tiny">对应需求 1.5.2：基石论文 vs 边缘衍生论文</span>')}
+      ${App.ui.sectionTitle('核心节点挖掘', '<span class="muted tiny">基石论文 vs 边缘衍生论文</span>')}
       <div class="grid grid-2" id="insights"></div>
 
-      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">对应需求 1.5.3：大模型依据图谱结果生成领域综述</span>')}
+      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">大模型依据图谱结果生成领域综述</span>')}
       <div class="card mb-16">
         <div class="card-body">
           <div class="row gap-8 mb-12">
@@ -99,7 +99,7 @@ window.App = window.App || {};
         </div>
       </div>
 
-      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">对应需求 1.5.3：按引用关系排序后生成领域综述</span>')}
+      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">按引用关系排序后生成领域综述</span>')}
       <div class="card mb-16"><div class="card-body" id="survey"></div></div>
     `;
 

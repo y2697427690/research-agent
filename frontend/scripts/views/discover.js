@@ -38,7 +38,6 @@ window.App = window.App || {};
       ${searchCard(d)}
       ${subscriptionCard(d)}
       ${resultArea(d)}
-      ${footNote()}
     `;
 
     bind(el);
@@ -228,18 +227,6 @@ window.App = window.App || {};
       </div>`);
   }
 
-  /* ---------------- 底部说明：如实交代未实现的部分 ---------------- */
-  function footNote() {
-    return App.ui.Out(h`
-      <div class="disc-foot">
-        <span class="muted small">
-          已实现：关键词检索、一键下载入库、自动去重（同篇不同版本会识别并提示）。
-          尚未实现：引用含金量筛选、按订阅定期追踪新论文、多用户推荐算法
-          —— 这些在需求里属「后续工作」，不做假界面。
-        </span>
-      </div>`);
-  }
-
   /* ---------------- 交互 ---------------- */
   function bind(el) {
     const input = U.$('#dq', el);
@@ -264,5 +251,5 @@ window.App = window.App || {};
   }
 
   App.views = App.views || {};
-  App.views.discover = { render, searchCard, subscriptionCard, resultArea, itemCard, footNote };
+  App.views.discover = { render, searchCard, subscriptionCard, resultArea, itemCard };
 })(window.App);

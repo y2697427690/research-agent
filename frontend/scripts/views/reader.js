@@ -1292,7 +1292,7 @@ ${parts.join('\n')}
           </div>
           <div class="notice info mt-16">
             <span>ℹ</span>
-            <div>对应需求 1.3.3.1：划词翻译。英译中走服务端模型；未配置 Key 或断网时退回本地术语表。</div>
+            <div>划词翻译。英译中走服务端模型；未配置 Key 或断网时退回本地术语表。</div>
           </div>
         </div>
       </div>`);
