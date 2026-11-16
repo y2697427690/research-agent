@@ -260,6 +260,16 @@ window.App = window.App || {};
       return get('/papers/' + encodeURIComponent(paperId) + '/future-work');
     },
 
+    /** 全部论文的赞/踩计数 */
+    feedbackSummary() {
+      return get('/papers/feedback/summary');
+    },
+
+    /** 投一票：value 1 = 赞，-1 = 踩 */
+    voteFeedback(paperId, value) {
+      return postJson('/papers/' + encodeURIComponent(paperId) + '/feedback', { value: value });
+    },
+
     paperTables(paperId) {
       return get('/papers/' + encodeURIComponent(paperId) + '/tables');
     },

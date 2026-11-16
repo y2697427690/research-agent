@@ -21,6 +21,7 @@ from app.core.exceptions import (
 from app.core.logging import get_logger
 from app.db.session import SessionLocal, get_db
 from app.models.chunk import Chunk
+from app.models.feedback import PaperFeedback
 from app.models.paper import Paper
 from app.models.translation import ChunkTranslation
 from app.schemas.chunk import (
@@ -30,6 +31,7 @@ from app.schemas.chunk import (
     TranslateResponse,
 )
 from app.schemas.common import Ok, Page
+from app.schemas.feedback import FeedbackIn, FeedbackOut
 from app.schemas.paper import (
     DuplicateInfo,
     FigureOut,
@@ -639,3 +641,69 @@ async def list_future_work(
             break
 
     return {"paper_id": paper_id, "items": items, "found": bool(items)}
+
+
+# ---------------------------------------------------------------- 点赞 / 踩
+
+async def _feedback_counts(db: AsyncSession, paper_id: str) -> tuple[int, int]:
+    up = (await db.execute(
+        select(func.count()).select_from(PaperFeedback)
+        .where(PaperFeedback.paper_id == paper_id, PaperFeedback.value == 1)
+    )).scalar_one()
+    down = (await db.execute(
+        select(func.count()).select_from(PaperFeedback)
+        .where(PaperFeedback.paper_id == paper_id, PaperFeedback.value == -1)
+    )).scalar_one()
+    return int(up), int(down)
+
+
+@router.get("/feedback/summary", summary="全部论文的点赞/踩统计")
+async def feedback_summary(db: AsyncSession = Depends(get_db)) -> dict:
+    """一次拿全部计数，前端列表只发一次请求。
+
+    注意这个路由必须写在 /{paper_id}/feedback 之前，
+    否则会被当成 paper_id="feedback" 的后一个路由匹配走。
+    """
+    rows = (
+        await db.execute(
+            select(PaperFeedback.paper_id, PaperFeedback.value, func.count())
+            .group_by(PaperFeedback.paper_id, PaperFeedback.value)
+        )
+    ).all()
+    out: dict[str, dict[str, int]] = {}
+    for pid, value, n in rows:
+        item = out.setdefault(pid, {"up": 0, "down": 0})
+        item["up" if value == 1 else "down"] += int(n)
+    return {"items": out}
+
+
+@router.get("/{paper_id}/feedback", response_model=FeedbackOut, summary="点赞/踩统计")
+async def get_feedback(
+    paper_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FeedbackOut:
+    up, down = await _feedback_counts(db, paper_id)
+    return FeedbackOut(paper_id=paper_id, up=up, down=down)
+
+
+@router.post("/{paper_id}/feedback", response_model=FeedbackOut, summary="点赞或踩")
+async def vote_feedback(
+    paper_id: str,
+    payload: FeedbackIn,
+    db: AsyncSession = Depends(get_db),
+) -> FeedbackOut:
+    """记录一票。value 只接受 1 或 -1。
+
+    为什么不做"一人一票"：系统没有用户体系，强行去重只能靠 IP/指纹，
+    既不准确也不值得；演示场景下累计票数足够表达"这条推荐有没有用"。
+    """
+    paper = await paper_service.get_paper(db, paper_id)
+    if paper is None:
+        raise NotFound("论文不存在", {"paper_id": paper_id})
+    if payload.value not in (1, -1):
+        raise InvalidRequest("value 只能是 1 或 -1")
+
+    db.add(PaperFeedback(paper_id=paper_id, value=payload.value))
+    await db.commit()
+    up, down = await _feedback_counts(db, paper_id)
+    return FeedbackOut(paper_id=paper_id, up=up, down=down)

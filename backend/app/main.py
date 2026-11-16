@@ -34,13 +34,14 @@ async def lifespan(app: FastAPI):
     from app.db.base import Base
     from app.db.session import engine
     from app.models import (  # noqa: F401  新增模型必须加到这里，否则不建表且不报错
-    agent_run,
-    chunk,
-    citation,
-    paper,
-    subscription,
-    translation,
-)
+        agent_run,
+        chunk,
+        citation,
+        feedback,
+        paper,
+        subscription,
+        translation,
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

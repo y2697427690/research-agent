@@ -450,6 +450,34 @@ window.App = window.App || {};
       }
     },
 
+    /** 拉一次全库赞踩计数，存在 papers[i].up/down 上供列表渲染 */
+    async loadFeedback() {
+      try {
+        const data = await App.api.feedbackSummary();
+        const map = data.items || {};
+        state.papers.forEach((p) => {
+          const c = map[p.id];
+          if (c) { p.up = c.up; p.down = c.down; }
+        });
+        notify('library');
+      } catch (err) {
+        // 计数失败不影响列表，静默即可
+      }
+    },
+
+    /** 点赞/踩：投完用服务端返回的计数覆盖本地值 */
+    async votePaper(id, value) {
+      try {
+        const res = await App.api.voteFeedback(id, value);
+        const p = state.papers.find((x) => x.id === id);
+        if (p) { p.up = res.up; p.down = res.down; }
+        App.ui.toast(value > 0 ? '已点赞' : '已点踩', 'ok', 1500);
+        notify('library');
+      } catch (err) {
+        App.ui.toast('投票失败：' + err.message, 'error', 3000);
+      }
+    },
+
     /* ===== 订阅 ===== */
     /**
      * 拉订阅列表。
