@@ -11,6 +11,7 @@ from app.api.v1 import (
     search,
     subscriptions,
     translate,
+    writing,
 )
 
 api_router = APIRouter()
@@ -22,4 +23,5 @@ api_router.include_router(qa.router)
 api_router.include_router(graph.router)
 api_router.include_router(discover.router)
 api_router.include_router(translate.router)
+api_router.include_router(writing.router)
 api_router.include_router(subscriptions.router)

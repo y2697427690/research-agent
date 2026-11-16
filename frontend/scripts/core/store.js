@@ -1139,10 +1139,32 @@ window.App = window.App || {};
       state.writing.idea = idea;
       state.writing.outline = null;
       notify('writing');
-      await U.sleep(1100);
-      state.writing.outline = App.writer.buildOutline(idea);
-      state.writing.running = false;
-      notify('writing');
+      try {
+        // 真实模型调用（旧实现是前端本地模板 + 假 sleep 1.1 秒）
+        const res = await App.api.writingOutline(idea);
+        state.writing.outline = {
+          topic: idea,
+          degraded: !!res.degraded,
+          sections: (res.sections || []).map((s) => ({
+            name: s.title,
+            zh: '',
+            words: (s.points || []).length + ' 条要点',
+            content: (s.points || []).join('\n'),
+            todo: [],
+          })),
+          references: (res.references || []).map((r, i) => ({
+            key: 'ref' + (i + 1),
+            text: r.title,
+            inLib: r.paper_id || '',
+          })),
+        };
+      } catch (err) {
+        state.writing.outline = null;
+        App.ui.toast('框架生成失败：' + err.message, 'error', 3600);
+      } finally {
+        state.writing.running = false;
+        notify('writing');
+      }
     },
 
     /* ===== 全局 UI ===== */

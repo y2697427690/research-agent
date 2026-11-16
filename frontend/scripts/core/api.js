@@ -353,6 +353,11 @@ window.App = window.App || {};
       return postJson('/agent/run', { question: question, max_steps: maxSteps || 4 }, 120000);
     },
 
+    /** 写作助手：生成论文框架（后端模型 + 库内参考文献白名单） */
+    writingOutline(idea) {
+      return postJson('/writing/outline', { idea: idea }, 120000);
+    },
+
     /* ---- 引用图谱 ---- */
     graph() { return get('/graph'); },
 
