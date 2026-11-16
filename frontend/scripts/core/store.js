@@ -452,16 +452,27 @@ window.App = window.App || {};
 
     /** 拉一次全库赞踩计数，存在 papers[i].up/down 上供列表渲染 */
     async loadFeedback() {
+      // 只在本次会话里拉一次：
+      // 这个方法会 notify('library') → 文库重绘 → render() 又调用它，
+      // 没有闸门就是无限重绘（表现：界面一直跳、所有按钮点不动）。
+      if (state.feedbackLoaded) return;
+      state.feedbackLoaded = true;
       try {
         const data = await App.api.feedbackSummary();
         const map = data.items || {};
+        let changed = false;
         state.papers.forEach((p) => {
           const c = map[p.id];
-          if (c) { p.up = c.up; p.down = c.down; }
+          if (c && (p.up !== c.up || p.down !== c.down)) {
+            p.up = c.up;
+            p.down = c.down;
+            changed = true;
+          }
         });
-        notify('library');
+        // 数据没变就不重绘，避免多余的整页渲染
+        if (changed) notify('library');
       } catch (err) {
-        // 计数失败不影响列表，静默即可
+        state.feedbackLoaded = false;   // 失败允许下次重试
       }
     },
 
