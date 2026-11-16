@@ -177,6 +177,10 @@ window.App = window.App || {};
                 ${subs.checking[s.id] ? 'disabled' : ''}>
                 ${subs.checking[s.id] ? '检查中…' : '立即检查'}
               </button>
+              <button class="btn btn-sm btn-ghost" data-action="refresh-subscription" data-id="${s.id}"
+                ${subs.refreshing === s.id ? 'disabled' : ''}>
+                ${subs.refreshing === s.id ? '刷新中…' : '↻ 刷新'}
+              </button>
               <button class="btn btn-sm btn-ghost" data-action="delete-subscription" data-id="${s.id}"
                 ${subs.removing[s.id] ? 'disabled' : ''}>删除</button>
             </div>

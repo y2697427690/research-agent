@@ -274,6 +274,7 @@ window.App = window.App || {};
         break;
       }
       case 'check-subscription': S.checkSubscription(data.id); break;
+      case 'refresh-subscription': S.refreshSubscription(data.id); break;
       case 'explain-reason': S.explainHit(data.arxiv); break;
       case 'delete-subscription': S.removeSubscription(data.id); break;
       case 'vote-up': S.vote(data.id, 'up'); break;

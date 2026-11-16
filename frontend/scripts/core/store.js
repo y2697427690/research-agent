@@ -515,6 +515,24 @@ window.App = window.App || {};
       }
     },
 
+    /** 刷新某条订阅（只重新拉数据，不请求 arXiv） */
+    async refreshSubscription(id) {
+      const subs = state.discover.subs;
+      if (subs.refreshing) return;
+      subs.refreshing = id;
+      notify('discover');
+      try {
+        const data = await App.api.subscriptions();
+        subs.items = data.items || [];
+        App.ui.toast('已刷新', 'ok', 1500);
+      } catch (err) {
+        App.ui.toast('刷新失败：' + err.message, 'error', 3000);
+      } finally {
+        subs.refreshing = null;
+        notify('discover');
+      }
+    },
+
     async addSubscription(keyword, category) {
       const subs = state.discover.subs;
       const q = String(keyword || '').trim();
