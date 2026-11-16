@@ -82,7 +82,7 @@ window.App = window.App || {};
                 ${st.qa.showEvidence ? '隐藏' : '显示'}引用原文面板
               </button>
               <div class="muted tiny mt-8">
-                真实实现：BM25 + 稠密向量混合检索 → 重排（Rerank）→ 拼接上下文 → LLM 生成。
+                检索方式：BM25 + 向量混合检索，按相关性融合后交给模型作答。
               </div>
             </div>
           </div>
