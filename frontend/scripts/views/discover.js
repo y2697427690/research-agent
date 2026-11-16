@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    views/discover.js — 论文发现（arXiv 检索）
    ----------------------------------------------------------------------------
    这一版重写的原因：旧版整页都是演示数据（App.data.recommendations），
@@ -188,8 +188,16 @@ window.App = window.App || {};
                     <span class="ellipsis" style="min-width:0">${hit.title}</span>
                     ${hit.in_library
                       ? h`<span class="badge badge-ok">已在库</span>`
-                      : h`<button class="btn btn-sm btn-ghost" data-action="discover-ingest"
-                           data-id="${hit.arxiv_id}${hit.version || ''}">入库并解析</button>`}
+                      : (() => {
+                          // 入库是 10~30 秒的长操作（下载 + 解析），必须给按钮忙碌态，
+                          // 否则用户会连点，或以为没生效。
+                          const key = hit.arxiv_id + (hit.version || '');
+                          const busy = (d.ingesting || {})[key] || (d.ingesting || {})[hit.arxiv_id];
+                          return busy
+                            ? h`<button class="btn btn-sm btn-ghost" disabled>入库中…</button>`
+                            : h`<button class="btn btn-sm btn-ghost" data-action="discover-ingest"
+                                 data-id="${key}">入库并解析</button>`;
+                        })()}
                     ${(() => {
                       const r = (d.subs.reasons || {})[hit.arxiv_id];
                       if (r && r.reason) return U.raw(h`<span class="muted tiny" title="${r.reason}">· ${U.clip(r.reason, 60)}</span>`);
