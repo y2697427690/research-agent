@@ -83,6 +83,9 @@ window.App = window.App || {};
 
     bindUpload();
     renderList();
+
+    // 赞/踩计数在服务端，进页面时拉一次（失败不影响列表）
+    App.store.actions.loadFeedback();
   }
 
   /* ==========================================================================
@@ -415,6 +418,8 @@ window.App = window.App || {};
             <button class="btn btn-sm btn-ghost" data-action="open-paper" data-id="${p.id}" title="打开阅读器">阅读</button>
             <button class="btn btn-sm btn-ghost btn-icon" data-action="meta" data-id="${p.id}" title="元数据">✎</button>
             <button class="btn btn-sm btn-ghost btn-icon" data-action="reparse" data-id="${p.id}" title="重新解析">↻</button>
+            <button class="btn btn-sm btn-ghost btn-icon" data-action="vote-paper" data-id="${p.id}" data-value="1" title="这篇推荐有用">👍${p.up ? ' ' + p.up : ''}</button>
+            <button class="btn btn-sm btn-ghost btn-icon" data-action="vote-paper" data-id="${p.id}" data-value="-1" title="这篇推荐没用">👎${p.down ? ' ' + p.down : ''}</button>
             <button class="btn btn-sm btn-ghost btn-icon" data-action="delete-paper" data-id="${p.id}" title="删除">🗑</button>
           </div>
         </td>
