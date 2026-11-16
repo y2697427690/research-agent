@@ -139,6 +139,35 @@ def write_report(result: dict, base: str, top_k: int) -> None:
     lines.append("> 本报告由 `deploy/eval_gold.py` 自动生成；题目见 `docs/eval/gold.json`。")
     REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    # 同时写一份机器可读的结果，供前端「评测」页面展示
+    payload = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "base": base,
+        "top_k": top_k,
+        "recall": round(result["recall"], 4),
+        "cite_precision": round(result["cite_precision"], 4),
+        "answered_rate": round(result["answered_rate"], 4),
+        "refusal_rate": round(result["refusal_rate"], 4),
+        "avg_cost": round(result["avg_cost"], 2),
+        "n_answerable": result["n_ans"],
+        "n_unanswerable": result["n_una"],
+        "rows": [
+            {
+                "id": r["id"],
+                "kind": r["kind"],
+                "question": r["question"],
+                "recall": r.get("recall"),
+                "cite_precision": r.get("cite_precision"),
+                "citations": r.get("citations", 0),
+                "refused": r.get("refused"),
+            }
+            for r in result["rows"]
+        ],
+    }
+    (ROOT / "docs" / "eval" / "report.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
 
 def selftest() -> int:
     """不联网，验证统计与判定逻辑本身没写错。"""

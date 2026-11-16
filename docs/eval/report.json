@@ -1,0 +1,284 @@
+{
+  "generated_at": "2026-11-16 17:45:18",
+  "base": "http://47.96.97.141:8000",
+  "top_k": 16,
+  "recall": 0.96,
+  "cite_precision": 0.844,
+  "answered_rate": 0.84,
+  "refusal_rate": 1.0,
+  "avg_cost": 1.77,
+  "n_answerable": 25,
+  "n_unanswerable": 5,
+  "rows": [
+    {
+      "id": "a01",
+      "kind": "answerable",
+      "question": "Attention Is All You Need 中 Transformer (big) 在 WMT 2014 英德翻译上达到多少 BLEU？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 3,
+      "refused": null
+    },
+    {
+      "id": "a02",
+      "kind": "answerable",
+      "question": "训练 base 版 Transformer 模型用了多少块 GPU？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 2,
+      "refused": null
+    },
+    {
+      "id": "a03",
+      "kind": "answerable",
+      "question": "论文 Attention Is All You Need 的第六作者是谁？",
+      "recall": false,
+      "cite_precision": 1.0,
+      "citations": 1,
+      "refused": null
+    },
+    {
+      "id": "a04",
+      "kind": "answerable",
+      "question": "BERT-large 有多少层 Transformer？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 3,
+      "refused": null
+    },
+    {
+      "id": "a05",
+      "kind": "answerable",
+      "question": "BERT 的预训练目标是什么？",
+      "recall": true,
+      "cite_precision": 0.5,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a06",
+      "kind": "answerable",
+      "question": "Layer Normalization 为什么比 Batch Normalization 更适合 RNN？",
+      "recall": true,
+      "cite_precision": 0.8,
+      "citations": 5,
+      "refused": null
+    },
+    {
+      "id": "a07",
+      "kind": "answerable",
+      "question": "T5 使用的 C4 数据集来自哪里？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 3,
+      "refused": null
+    },
+    {
+      "id": "a08",
+      "kind": "answerable",
+      "question": "CLIP 怎么做零样本分类？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 3,
+      "refused": null
+    },
+    {
+      "id": "a09",
+      "kind": "answerable",
+      "question": "Vision Transformer 把图像切分成多大的 patch？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a10",
+      "kind": "answerable",
+      "question": "Codex 在 HumanEval 上的通过率是多少？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a11",
+      "kind": "answerable",
+      "question": "InstructGPT 用了多少名标注人员？",
+      "recall": true,
+      "cite_precision": 0.0,
+      "citations": 0,
+      "refused": null
+    },
+    {
+      "id": "a12",
+      "kind": "answerable",
+      "question": "Qwen2.5 发布了哪些尺寸的模型？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a13",
+      "kind": "answerable",
+      "question": "ZeRO 的三个优化阶段分别切分了什么？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 1,
+      "refused": null
+    },
+    {
+      "id": "a14",
+      "kind": "answerable",
+      "question": "PPO 的 clipped surrogate objective 解决了什么问题？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 3,
+      "refused": null
+    },
+    {
+      "id": "a15",
+      "kind": "answerable",
+      "question": "Understanding Deep Learning 这本书主要讲什么？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a16",
+      "kind": "answerable",
+      "question": "Improving Language Understanding 用的是哪套评测基准？",
+      "recall": true,
+      "cite_precision": 0.0,
+      "citations": 0,
+      "refused": null
+    },
+    {
+      "id": "a17",
+      "kind": "answerable",
+      "question": "在 Transformer 中用 Pre-LN 相比 Post-LN 有什么好处？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 5,
+      "refused": null
+    },
+    {
+      "id": "a18",
+      "kind": "answerable",
+      "question": "Emergent Abilities of Large Language Models 讲了什么现象？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a19",
+      "kind": "answerable",
+      "question": "LLaMA 论文总共训练了多少个 token？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 2,
+      "refused": null
+    },
+    {
+      "id": "a20",
+      "kind": "answerable",
+      "question": "ViT 在大规模数据上预训练后效果如何？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 5,
+      "refused": null
+    },
+    {
+      "id": "a21",
+      "kind": "answerable",
+      "question": "BERT 论文里用了什么数据做预训练？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 1,
+      "refused": null
+    },
+    {
+      "id": "a22",
+      "kind": "answerable",
+      "question": "Transformer 的多头注意力里，每个头的维度怎么算？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 4,
+      "refused": null
+    },
+    {
+      "id": "a23",
+      "kind": "answerable",
+      "question": "GPT 系列里 InstructGPT 和原始 GPT-3 的目标有什么不同？",
+      "recall": true,
+      "cite_precision": 0.8,
+      "citations": 5,
+      "refused": null
+    },
+    {
+      "id": "a24",
+      "kind": "answerable",
+      "question": "CLIP 的训练目标是什么？",
+      "recall": true,
+      "cite_precision": 0.0,
+      "citations": 0,
+      "refused": null
+    },
+    {
+      "id": "a25",
+      "kind": "answerable",
+      "question": "T5 把所有任务统一成了什么形式？",
+      "recall": true,
+      "cite_precision": 1.0,
+      "citations": 2,
+      "refused": null
+    },
+    {
+      "id": "u01",
+      "kind": "unanswerable",
+      "question": "Shor 算法分解大整数的具体量子线路深度是多少？",
+      "recall": null,
+      "cite_precision": null,
+      "citations": 0,
+      "refused": true
+    },
+    {
+      "id": "u02",
+      "kind": "unanswerable",
+      "question": "AlphaFold 3 在 CASP15 上的具体 GDT 分数是多少？",
+      "recall": null,
+      "cite_precision": null,
+      "citations": 0,
+      "refused": true
+    },
+    {
+      "id": "u03",
+      "kind": "unanswerable",
+      "question": "5G NR 在 28GHz 频段的路径损耗模型参数是什么？",
+      "recall": null,
+      "cite_precision": null,
+      "citations": 0,
+      "refused": true
+    },
+    {
+      "id": "u04",
+      "kind": "unanswerable",
+      "question": "用深度学习做糖尿病视网膜病变筛查有什么临床指南？",
+      "recall": null,
+      "cite_precision": null,
+      "citations": 0,
+      "refused": true
+    },
+    {
+      "id": "u05",
+      "kind": "unanswerable",
+      "question": "LSTM 在处理中文分词时词表应该设多大？",
+      "recall": null,
+      "cite_precision": null,
+      "citations": 0,
+      "refused": true
+    }
+  ]
+}

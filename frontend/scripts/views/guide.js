@@ -141,8 +141,55 @@ window.App = window.App || {};
     '        └── guide.js            本页',
   ].join('\n');
 
+
+  /**
+   * 评测卡片：读 /eval/summary（数据由 deploy/eval_gold.py 跑完落盘）。
+   * 不在页面里实时跑评测 —— 一次要打 30 题真实模型、2~3 分钟，打开页面等不起。
+   */
+  function renderEvalCard(el) {
+    const box = U.$('#eval-card', el);
+    if (!box) return;
+    App.api.evalSummary().then((d) => {
+      const pct = (v) => Math.round((v || 0) * 1000) / 10;
+      const bar = (label, value) => h`
+        <div class="row gap-8 mb-8" style="align-items:center">
+          <span class="muted small" style="width:96px">${label}</span>
+          <div style="flex:1;height:8px;background:var(--bg-2);border-radius:4px;overflow:hidden">
+            <div style="width:${pct(value)}%;height:100%;background:var(--brand)"></div>
+          </div>
+          <span class="mono small" style="width:52px;text-align:right">${pct(value)}%</span>
+        </div>`;
+      box.innerHTML = h`
+        <div class="card-head">
+          <div class="card-title">30 题 gold set 实测</div>
+          <div class="spacer"></div>
+          <span class="badge badge-ok">${d.n_answerable} 可答 + ${d.n_unanswerable} 不可答</span>
+        </div>
+        <div class="card-body">
+          ${U.raw(bar('Recall@' + d.top_k, d.recall))}
+          ${U.raw(bar('引用准确率', d.cite_precision))}
+          ${U.raw(bar('可答率', d.answered_rate))}
+          ${U.raw(bar('拒答准确率', d.refusal_rate))}
+          <div class="muted tiny mt-8">
+            平均单题耗时 ${d.avg_cost} 秒 · 评测时间 ${d.generated_at} · 目标 ${d.base}
+          </div>
+          <div class="muted tiny mt-8">
+            逐题结果见 <code>docs/eval/report.md</code>；题目见 <code>docs/eval/gold.json</code>。
+            指标定义：Recall@K = 期望事实是否出现在检索前 K 段；引用准确率 = 引用片段中真含该事实的比例。
+          </div>
+        </div>`;
+    }).catch(() => {
+      box.innerHTML = h`
+        <div class="card-head"><div class="card-title">30 题 gold set 实测</div></div>
+        <div class="card-body tight">
+          <div class="muted small">还没有评测结果。运行 <code>python deploy/eval_gold.py</code> 后会显示在这里。</div>
+        </div>`;
+    });
+  }
+
   function render(el) {
     const total = MAP.reduce((a, g) => a + g.items.length, 0);
+    renderEvalCard(el);
 
     el.innerHTML = h`
       <div class="view-head">
@@ -157,6 +204,15 @@ window.App = window.App || {};
           <span class="badge badge-brand">需求来源：科研小助手Agent-AI大模型.pdf</span>
           <span class="badge badge-outline">已映射到具体页面元素</span>
         </div>
+      </div>
+
+      <div class="card mb-16" id="eval-card">
+        <div class="card-head">
+          <div class="card-title">30 题 gold set 实测</div>
+          <div class="spacer"></div>
+          <span class="badge badge-outline">加载中…</span>
+        </div>
+        <div class="card-body tight"><div class="muted small">正在读取最近一次评测结果…</div></div>
       </div>
 
       ${U.raw(MAP.map((g) => h`

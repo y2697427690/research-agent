@@ -345,6 +345,11 @@ window.App = window.App || {};
       return postJson('/subscriptions/' + encodeURIComponent(id) + '/check', {}, 90000);
     },
 
+    /** 最近一次 gold set 评测结果（离线跑好后落盘） */
+    evalSummary() {
+      return get('/eval/summary');
+    },
+
     /* ---- Agent ---- */
     agentTools() { return get('/agent/tools'); },
 
