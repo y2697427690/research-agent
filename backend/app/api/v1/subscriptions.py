@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import scheduler
 from app.core.exceptions import InvalidRequest, NotFound
 from app.core.logging import get_logger
 from app.db.session import get_db
+from app.models.paper import Paper
 from app.schemas.common import Ok
 from app.schemas.subscription import (
     SubscriptionCheckOut,
@@ -28,18 +30,33 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/subscriptions", tags=["订阅"])
 
 
-def _to_out(sub, hits=None) -> SubscriptionOut:
+async def _library_ids(db: AsyncSession, arxiv_ids: set[str]) -> set[str]:
+    """查这些 arxiv_id 里哪些已经在库。
+
+    为什么每次现查：in_library 是抓取那一刻的快照，
+    用户之后把论文入库了，快照就过期 —— 表现就是“已入库的还显示入库按钮”。
+    """
+    if not arxiv_ids:
+        return set()
+    rows = (await db.execute(select(Paper.arxiv_id).where(Paper.arxiv_id.in_(arxiv_ids)))).scalars().all()
+    return {r for r in rows if r}
+
+
+
+
+async def _to_out(db: AsyncSession, sub) -> SubscriptionOut:
     """ORM → 响应模型。
 
     hit_count 用 len(sub.hits)：关系是 lazy="selectin"，列表查询时已一并取回；
     latest 只取最近 3 条做预览，避免列表页返回上百条摘要。
     """
     ordered = sorted(sub.hits, key=lambda h: h.found_at, reverse=True) if sub.hits else []
+    in_lib = await _library_ids(db, {h.arxiv_id for h in ordered})
     latest = [
         SubscriptionHitOut(
             id=h.id, arxiv_id=h.arxiv_id, version=h.version, title=h.title,
             authors=h.authors, summary=h.summary, published=h.published,
-            abs_url=h.abs_url, pdf_url=h.pdf_url, in_library=h.in_library,
+            abs_url=h.abs_url, pdf_url=h.pdf_url, in_library=h.arxiv_id in in_lib,
             found_at=h.found_at,
         )
         for h in ordered[:3]
@@ -62,7 +79,7 @@ async def list_subscriptions(
     db: AsyncSession = Depends(get_db),
 ) -> SubscriptionListOut:
     subs = await subscription_service.list_all(db)
-    items = [_to_out(s) for s in subs]
+    items = [await _to_out(db, s) for s in subs]
     return SubscriptionListOut(items=items, total=len(items))
 
 
@@ -79,7 +96,7 @@ async def create_subscription(
         raise InvalidRequest(str(exc)) from exc
     await db.commit()
     await db.refresh(sub)
-    return _to_out(sub)
+    return await _to_out(db, sub)
 
 
 @router.delete("/{sub_id}", response_model=Ok, summary="删除订阅")
@@ -129,11 +146,13 @@ async def list_hits(
     if sub is None:
         raise NotFound("订阅不存在", {"subscription_id": sub_id})
     hits = await subscription_service.recent_hits(db, sub_id, limit)
+    # 与列表接口同样处理：按库内实际存在覆盖，避免"已入库还显示入库按钮"
+    in_lib = await _library_ids(db, {h.arxiv_id for h in hits})
     return [
         SubscriptionHitOut(
             id=h.id, arxiv_id=h.arxiv_id, version=h.version, title=h.title,
             authors=h.authors, summary=h.summary, published=h.published,
-            abs_url=h.abs_url, pdf_url=h.pdf_url, in_library=h.in_library,
+            abs_url=h.abs_url, pdf_url=h.pdf_url, in_library=h.arxiv_id in in_lib,
             found_at=h.found_at,
         )
         for h in hits
