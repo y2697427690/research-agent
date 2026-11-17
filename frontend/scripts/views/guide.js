@@ -145,6 +145,13 @@ window.App = window.App || {};
   function renderEvalCard(el) {
     const box = U.$('#eval-card', el);
     if (!box) return;
+    // 离线/测试环境没有 App.api，直接给兜底文案，别让整页渲染抛错
+    if (!App.api || typeof App.api.evalSummary !== 'function') {
+      box.innerHTML = h`
+        <div class="card-head"><div class="card-title">30 题 gold set 实测</div></div>
+        <div class="card-body tight"><div class="muted small">离线模式下不加载评测数据。</div></div>`;
+      return;
+    }
     App.api.evalSummary().then((d) => {
       const pct = (v) => Math.round((v || 0) * 1000) / 10;
       const bar = (label, value) => h`
@@ -185,7 +192,6 @@ window.App = window.App || {};
 
   function render(el) {
     const total = MAP.reduce((a, g) => a + g.items.length, 0);
-    renderEvalCard(el);
 
     el.innerHTML = h`
       <div class="view-head">
@@ -263,6 +269,10 @@ window.App = window.App || {};
           </div></div>`).join(''))}
       </div>
     `;
+
+    // 必须在 innerHTML 赋值之后调用：renderEvalCard 要先找到 #eval-card，
+    // 之前放在赋值前导致永远找不到节点，卡片一直停在「正在读取…」。
+    renderEvalCard(el);
   }
 
   App.views = App.views || {};
