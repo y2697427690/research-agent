@@ -669,7 +669,7 @@ t('说明页：需求对照表覆盖 1.1–1.6 与评分标准', () => {
   renderView('guide');
   ['1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '评分标准'].forEach(mustText);
   mustFindAll('tr', 40, '对照表行');
-  mustText('scripts/views/library.js');
+  mustText('views/library.js');
   mustText('research-assistant/');
 });
 t('说明页：不在主导航，标记为 hidden 但视图仍可用', () => {
