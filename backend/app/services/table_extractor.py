@@ -48,6 +48,7 @@ def extract_tables(
     max_tables: int = MAX_TABLES,
     min_rows: int = 2,
     min_cols: int = 2,
+    min_fill: float = 0.5,
 ) -> list[TableData]:
     """抽取 PDF 中的表格。
 
@@ -81,7 +82,17 @@ def extract_tables(
                 cleaned = [r for r in cleaned if any(c for c in r)]
                 if len(cleaned) < min_rows:
                     continue
-                if max((len(r) for r in cleaned), default=0) < min_cols:
+                cols = max((len(r) for r in cleaned), default=0)
+                if cols < min_cols:
+                    continue
+                # 填充率过滤：单元格大量为空的「表」通常是版面误判
+                # （框线里没有文字、或文字在框外），展示出来只会让人误以为抽错了。
+                non_empty = sum(1 for r in cleaned for c in r if c.strip())
+                fill_ratio = non_empty / max(1, len(cleaned) * cols)
+                if fill_ratio < min_fill:
+                    continue
+                # 至少要有一行填了两个以上单元格，否则就是单列数字堆
+                if not any(sum(1 for c in r if c.strip()) >= 2 for r in cleaned):
                     continue
                 out.append(
                     TableData(page=page_no + 1, rows=cleaned, bbox=getattr(table, "bbox", None))

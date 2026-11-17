@@ -1088,3 +1088,15 @@ a.dash-more:hover { color: var(--brand-500); text-decoration: none; }
 }
 
 
+
+
+/* ---- 抽取出的表格（阅读器「表格」弹窗） ---- */
+.data-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.data-table th, .data-table td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.data-table th { background: var(--bg-2); font-weight: 600; }
+.data-table tr:nth-child(even) td { background: rgba(0, 0, 0, 0.015); }

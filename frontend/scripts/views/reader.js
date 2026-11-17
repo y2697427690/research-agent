@@ -5,7 +5,7 @@
      1.3.1 基本阅读功能 —— 保留原文排版（双栏·单栏·公式·表格）
      1.3.2 智能引导     —— ① 一/二/三级标题树状导航栏，任意跳转
                           ② 引文角标 [1] 可点击跳到 References，并能跳回原位
-     1.3.3 翻译         —— ① 划词/选中翻译 ② 整篇翻译（Markdown 重排 / 保排版两种方案）
+     1.3.3 翻译         —— ① 划词/选中翻译 ② 整篇翻译（显示中文译文）
                           ③ 中英对比阅读：拖动一侧，另一侧自动同步滚动
    ========================================================================== */
 window.App = window.App || {};
@@ -253,7 +253,7 @@ window.App = window.App || {};
     const map = {
       original: { icon: '❐', title: '原文模式', desc: '仅显示英文原文，保留论文原有的排版结构（单栏 / 双栏、公式、表格）。' },
       bilingual: { icon: '⇄', title: '中英对照模式', desc: '左右双栏逐段对齐：拖动任意一侧，另一侧自动同步滚动到对应段落。公式与代码默认不翻译。' },
-      translation: { icon: '文', title: '整篇译文模式', desc: '仅显示中文译文（Markdown 重排）。另一种方案是「输出 PDF 并按原位置重新排版」，需额外处理中英文长度差异。' },
+      translation: { icon: '文', title: '整篇译文模式', desc: '仅显示中文译文。' },
     };
     const m = map[mode] || map.original;
     return App.ui.Out(h`
@@ -722,7 +722,7 @@ window.App = window.App || {};
     const paint = (tables) => {
       if (!box) return;
       if (!tables.length) {
-        box.innerHTML = h`<div class="muted small">这篇论文没有识别到表格。无边框三线表无法被识别，属已知限制。</div>`;
+        box.innerHTML = h`<div class="muted small">未识别到表格。</div>`;
         return;
       }
       box.innerHTML = h`
@@ -735,8 +735,8 @@ window.App = window.App || {};
             </div>
             <div style="overflow:auto">
               <table class="data-table">
-                <thead><tr>${U.raw((t.rows[0] || []).map((c) => h`<th>${c}</th>`).join(''))}</tr></thead>
-                <tbody>${U.raw(t.rows.slice(1).map((row) => h`
+                <thead><tr>${U.raw((headCells(t) || []).map((c) => h`<th>${c}</th>`).join(''))}</tr></thead>
+                <tbody>${U.raw(bodyRows(t).map((row) => h`
                   <tr>${U.raw(row.map((c) => h`<td>${c}</td>`).join(''))}</tr>`).join(''))}</tbody>
               </table>
             </div>
@@ -791,7 +791,7 @@ window.App = window.App || {};
             </div>`).join(''))}`
         : '';
       if (!list.length) {
-        box.innerHTML = h`<div class="muted small">没有抽到内嵌位图。矢量图（很多论文的框架图）属已知限制。</div>${U.raw(capHtml)}`;
+        box.innerHTML = h`<div class="muted small">未识别到图片。</div>${U.raw(capHtml)}`;
         return;
       }
       box.innerHTML = h`
@@ -953,6 +953,24 @@ ${parts.join('\n')}
     win.document.close();
     setTimeout(() => { try { win.focus(); win.print(); } catch (e) { /* 用户可手动打印 */ } }, 400);
     App.ui.toast('已打开打印窗口：目标选「另存为 PDF」即可', 'ok', 4000);
+  }
+
+
+  /** 表头单元格：首行全空时合成「列 1..N」，避免渲染成没有表头的裸数字 */
+  function headCells(t) {
+    const rows = t.rows || [];
+    const first = rows[0] || [];
+    const empty = !first.some((c) => String(c || '').trim());
+    if (empty) return first.map((_, i) => '列 ' + (i + 1));
+    return first;
+  }
+
+  /** 表体：首行是表头时跳过；首行全空时它本身就是数据，要保留 */
+  function bodyRows(t) {
+    const rows = t.rows || [];
+    const first = rows[0] || [];
+    const empty = !first.some((c) => String(c || '').trim());
+    return empty ? rows : rows.slice(1);
   }
 
   /* ==========================================================================
