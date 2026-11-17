@@ -93,6 +93,9 @@ window.App = window.App || {};
     drawGraph(nodes);
     renderSide(nodes);
     renderInsights(nodes);
+    // 综述卡片必须在这里画一次：删掉旧实现时，唯一的调用点跟着被删了，
+    // 结果 #survey 容器一直是空的（真实反馈）。
+    renderSurvey();
     bind(el);
   }
 
