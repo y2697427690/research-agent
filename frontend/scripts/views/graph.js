@@ -86,20 +86,7 @@ window.App = window.App || {};
       ${App.ui.sectionTitle('核心节点挖掘', '<span class="muted tiny">基石论文 vs 边缘衍生论文</span>')}
       <div class="grid grid-2" id="insights"></div>
 
-      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">大模型依据图谱结果生成领域综述</span>')}
-      <div class="card mb-16">
-        <div class="card-body">
-          <div class="row gap-8 mb-12">
-            <button class="btn btn-primary" id="gen-summary">✦ 生成领域综述</button>
-            <span class="muted tiny">基于 ${nodes.length} 个节点与 ${countEdges()} 条引用边</span>
-          </div>
-          <div id="summary-box" class="summary-box">
-            <div class="muted small">点击上方按钮，Agent 会读取图谱结构 + 各论文摘要，输出该领域的简短综述。</div>
-          </div>
-        </div>
-      </div>
-
-      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">按引用关系排序后生成领域综述</span>')}
+      ${App.ui.sectionTitle('自动综述', '<span class="muted tiny">按引用关系排序后由模型生成，带《标题》出处</span>')}
       <div class="card mb-16"><div class="card-body" id="survey"></div></div>
     `;
 
@@ -505,21 +492,6 @@ window.App = window.App || {};
      7. 自动综述 + 未来工作
      ========================================================================== */
   function bind(el) {
-    const gen = U.$('#gen-summary', el);
-    if (gen) {
-      gen.addEventListener('click', async () => {
-        const box = U.$('#summary-box');
-        box.innerHTML = h`<div class="row gap-8"><span class="dots"><i></i><i></i><i></i></span>
-          <span class="muted small">正在读取图谱结构、论文摘要与引用方向…</span></div>`;
-        await U.sleep(900);
-        const text = App.data.graphInsights['g-transformer'].summary;
-        box.innerHTML = h`<div class="summary-text" id="sumtxt"></div>`;
-        U.streamText(U.$('#sumtxt'), text, { speed: 8, chunk: 3 });
-        renderSurvey();
-        App.ui.toast('综述已生成，未来工作建议已同步更新', 'ok');
-      });
-    }
-
     const g = U.$('#ggroup', el);
     if (g) {
       g.addEventListener('change', () => {
