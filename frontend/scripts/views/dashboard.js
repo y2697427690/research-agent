@@ -53,7 +53,7 @@ window.App = window.App || {};
           <button class="btn btn-lg" data-action="go" data-route="${n ? 'qa' : 'library'}">
             ${n ? '开始提问' : '查看文库'}
           </button>
-          <button class="btn btn-lg btn-ghost" data-action="go" data-route="guide">功能说明</button>
+          <button class="btn btn-lg btn-ghost" data-action="go" data-route="guide">需求对照表</button>
         </div>
       </section>`);
   }
