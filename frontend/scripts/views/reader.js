@@ -232,7 +232,7 @@ window.App = window.App || {};
         <div class="view-desc">阅读器提供结构化阅读：树状目录、引文跳转、中英对照与划词翻译。</div>
       </div></div>
       <div class="grid grid-2">
-        ${U.raw(papers.slice(0, 12).map((p) => h`
+        ${U.raw(papers.map((p) => h`
           <div class="card" data-action="open-paper" data-id="${p.id}" style="cursor:pointer">
             <div class="card-body">
               <div style="font-weight:620">${p.title}</div>
