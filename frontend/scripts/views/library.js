@@ -383,6 +383,17 @@ window.App = window.App || {};
      ========================================================================== */
   let filter = 'all';
 
+
+  /** 加入时间：显示绝对时间（本地时区），避免相对时间的时区误判 */
+  function fmtAdded(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
   function renderList() {
     const box = U.$('#plist');
     if (!box) return;
@@ -412,7 +423,7 @@ window.App = window.App || {};
         <td class="mono small">${p.pages}</td>
         <td class="small muted nowrap">${p.sections} 章 / ${p.figures} 图 / ${p.tables} 表</td>
         <td>${U.raw(App.ui.qualityBadge(p.quality))}</td>
-        <td class="small muted nowrap">${U.ago(p.addedAt)}</td>
+        <td class="small muted nowrap">${fmtAdded(p.addedAt)}</td>
         <td>
           <div class="row gap-4">
             <button class="btn btn-sm btn-ghost" data-action="open-paper" data-id="${p.id}" title="打开阅读器">阅读</button>

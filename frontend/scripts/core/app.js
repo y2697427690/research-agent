@@ -380,6 +380,13 @@ window.App = window.App || {};
     const mod = v.view();
     const el = shellEls.view;
     const scrollTop = el.scrollTop;
+    const winY = window.scrollY || 0;
+    // 同一个路由的「数据刷新重绘」应当保持滚动位置；
+    // 只有真正切换页面时才回到顶部。以前只认 __keepScroll 标志，
+    // 于是图谱页点「生成综述」这类动作会把用户顶回页首。
+    const sameRoute = renderView.__lastRoute === v.id;
+    const keepScroll = sameRoute || App.store.state.__keepScroll;
+    renderView.__lastRoute = v.id;
 
     // 问答页的滚动发生在消息区内部，不在 .view 上。
     // 每次重绘都会销毁消息区元素、把它的 scrollTop 清零，
@@ -401,8 +408,10 @@ window.App = window.App || {};
     } else {
       el.innerHTML = App.ui.empty('◌', '视图「' + v.title + '」尚未实现');
     }
-    // 保持滚动位置（仅在非路由切换时；切页时归零）
-    el.scrollTop = App.store.state.__keepScroll ? scrollTop : 0;
+    // 保持滚动位置（同路由刷新保持；切页归零）
+    el.scrollTop = keepScroll ? scrollTop : 0;
+    // 测试用的极简 DOM 没有 scrollTo，必须做类型判断，否则每个用例都抛错
+    if (keepScroll && typeof window.scrollTo === "function") window.scrollTo(0, winY);
     App.store.state.__keepScroll = false;
   }
 
