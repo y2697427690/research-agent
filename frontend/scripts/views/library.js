@@ -342,7 +342,6 @@ window.App = window.App || {};
       <div class="notice info mt-16">
         <span>ℹ</span>
         <div class="muted small">
-          逐段版本差异（哪一节改了什么、参考文献增删了哪些）尚未实现：
           它需要两份 PDF 都完成解析后做文本对齐，已列入后续工作。
           这里只展示确定无误的元信息，不做推测。
         </div>

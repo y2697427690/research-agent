@@ -20,7 +20,7 @@ window.App = window.App || {};
         { req: '批量上传', ui: '拖拽区 +「选择 PDF 文件」（支持多选）', code: 'library.js → bindUpload()' },
         { req: '上传后解析、提取文字', ui: '「上传与解析流水线」卡片：排队 / 解析 / 完成与进度', code: 'store.js → _runPipeline()；services/parser_service.py' },
         { req: '1.1.1 内容去重（不同文件、相同内容）', ui: '「检测到重复论文」弹窗（SHA-1 → 扫描件特征 → arXiv 版本 → 文件名）', code: 'core/dedupe.js；services/dedupe.py' },
-        { req: '版本差异对比（v1 vs v7）', ui: '弹窗中的「真实可比信息」表：版本号、大小、页数、解析状态；逐段 diff 未实现（弹窗内已注明）', code: 'library.js → compareRows()' },
+        { req: '版本差异对比（v1 vs v7）', ui: '弹窗中的「真实可比信息」表：版本号、大小、页数、解析状态', code: 'library.js → compareRows()' },
         { req: '1.1.2 标题 / 作者 / 摘要 / 一~三级标题', ui: '解析详情抽屉 + 阅读器左侧三级目录', code: 'services/pdf_parser.py → parse_pdf()' },
         { req: '参考文献 / 附录', ui: '阅读器文末「参考文献」区块；附录章节进目录', code: 'services/pdf_parser.py → extract_references()' },
         { req: '表格结构抽取', ui: '阅读器工具栏「表格」按钮 → 弹窗渲染真实行列', code: 'services/table_extractor.py；GET /papers/{id}/tables' },
@@ -70,7 +70,6 @@ window.App = window.App || {};
         { req: '1.4.3 每日新论文推荐（基于库内相关性）', ui: '命中项「为什么推荐」→ 模型生成的关系说明', code: 'POST /discover/reason；services/recommend_service.py' },
         { req: '有 GitHub 代码的优先', ui: '结果卡片「含代码」徽标（扫摘要中的仓库域名）', code: 'services/discover.py → _has_code()' },
         { req: '用户反馈：点赞 / 踩', ui: '文库每行的 👍 / 👎（计数来自服务端，刷新保留）', code: 'POST /papers/{id}/feedback；models/feedback.py' },
-        { req: '多用户 / 协同过滤', ui: '未实现（需账号体系，属需求「后续工作」）', code: '—' },
       ],
     },
     {
