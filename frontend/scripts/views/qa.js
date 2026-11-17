@@ -47,6 +47,24 @@ window.App = window.App || {};
    */
   let qaFilter = '';
 
+
+  /** 论文列表 HTML：按筛选词过滤，抽出来是为了筛选时只重绘列表 */
+  function papersHtml(selected) {
+    const kw = qaFilter.toLowerCase();
+    return App.store.state.papers
+      .filter((p) => !kw || [p.title, p.fileName].filter(Boolean).join(' ').toLowerCase().includes(kw))
+      .slice(0, 24)
+      .map((p) => {
+        const on = (selected || []).indexOf(p.id) !== -1;
+        return App.ui.Out(h`
+          <button class="qa-paper ${on ? 'on' : ''}" data-action="qa-toggle-paper" data-id="${p.id}">
+            <span class="chk">${on ? '✓' : ''}</span>
+            <span class="grow ellipsis" style="text-align:left">${p.title}</span>
+          </button>`);
+      })
+      .join('');
+  }
+
   function render(el) {
     const st = App.store.state;
     const chat = st.chats.find((c) => c.id === st.activeChatId) || null;
@@ -67,17 +85,8 @@ window.App = window.App || {};
               </div>
               <input class="input mb-8" id="qa-filter" placeholder="筛选论文（标题 / 文件名）"
                 style="width:100%;font-size:12px" value="${qaFilter}" />
-              <div class="qa-paper-list">
-                ${U.raw(App.store.state.papers
-                  .filter((p) => !qaFilter || [p.title, p.fileName].filter(Boolean).join(' ').toLowerCase().includes(qaFilter.toLowerCase()))
-                  .slice(0, 24).map((p) => {
-                  const on = st.qa.paperIds.indexOf(p.id) !== -1;
-                  return App.ui.Out(h`
-                    <button class="qa-paper ${on ? 'on' : ''}" data-action="qa-toggle-paper" data-id="${p.id}">
-                      <span class="chk">${on ? '✓' : ''}</span>
-                      <span class="grow ellipsis" style="text-align:left">${p.title}</span>
-                    </button>`);
-                }).join(''))}
+              <div class="qa-paper-list" id="qa-paper-list">
+                ${U.raw(papersHtml(st.qa.paperIds))}
               </div>
             </div>
           </div>
@@ -628,9 +637,9 @@ window.App = window.App || {};
     if (!box) return;
     box.addEventListener('input', () => {
       qaFilter = box.value;
-      App.render();
-      const again = U.$('#qa-filter');
-      if (again) { again.focus(); }
+      // 只重绘列表：整页 render 会把输入框重建，光标被丢回开头（真实反馈）
+      const list = U.$('#qa-paper-list', el);
+      if (list) list.innerHTML = papersHtml(App.store.state.qa.paperIds);
     });
   }
 
