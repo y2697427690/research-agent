@@ -434,7 +434,7 @@ window.App = window.App || {};
         </div>
 
         <div class="selftest mt-24" style="width:100%;max-width:720px">
-          <div class="muted tiny mb-8">试试这些问题（来自需求文档 1.2 的例题，均已内置标准答案与出处）：</div>
+          <div class="muted tiny mb-8">试试这些问题：</div>
           ${U.raw(examples.map((q) => h`
             <button class="qa-example" data-action="qa-ask-preset" data-q="${q}">
               <span class="muted">▸</span><span>${q}</span>
