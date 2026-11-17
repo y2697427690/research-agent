@@ -217,7 +217,7 @@ window.App = window.App || {};
    * 旧版这里展示了「新增 Attention Visualizations 附录」「参考文献由 34 增至 40 条」
    * 一类具体到条目的差异——那些全是写死的演示文本，
    * 版本号缺失时还会渲染成「vNaN」，属于界面在编造数据。
-   * 逐段 diff 需要两份都解析后做文本对齐，已列入后续工作。
+   * 逐段 diff 需要两份 PDF 都完成解析后做文本对齐。
    */
   function compareRows(paper, up) {
     const oldNum = verNum(paper.version);
@@ -342,7 +342,7 @@ window.App = window.App || {};
       <div class="notice info mt-16">
         <span>ℹ</span>
         <div class="muted small">
-          它需要两份 PDF 都完成解析后做文本对齐，已列入后续工作。
+          它需要两份 PDF 都完成解析后做文本对齐。
           这里只展示确定无误的元信息，不做推测。
         </div>
       </div>
