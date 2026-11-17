@@ -40,6 +40,13 @@ window.App = window.App || {};
   /* ==========================================================================
      1. 主渲染
      ========================================================================== */
+  /**
+   * 论文列表的本地筛选词。
+   * 放模块变量而不是 store：它只影响这一块列表，
+   * 走全局状态会触发整页重绘，输入时容易丢焦点。
+   */
+  let qaFilter = '';
+
   function render(el) {
     const st = App.store.state;
     const chat = st.chats.find((c) => c.id === st.activeChatId) || null;
@@ -58,8 +65,12 @@ window.App = window.App || {};
               <div class="muted tiny mb-8">
                 ${st.qa.scope === 'single' ? '在单篇论文内检索（精度最高）' : '跨论文检索并做对比（最多可多选）'}
               </div>
+              <input class="input mb-8" id="qa-filter" placeholder="筛选论文（标题 / 文件名）"
+                style="width:100%;font-size:12px" value="${qaFilter}" />
               <div class="qa-paper-list">
-                ${U.raw(App.store.state.papers.slice(0, 24).map((p) => {
+                ${U.raw(App.store.state.papers
+                  .filter((p) => !qaFilter || [p.title, p.fileName].filter(Boolean).join(' ').toLowerCase().includes(qaFilter.toLowerCase()))
+                  .slice(0, 24).map((p) => {
                   const on = st.qa.paperIds.indexOf(p.id) !== -1;
                   return App.ui.Out(h`
                     <button class="qa-paper ${on ? 'on' : ''}" data-action="qa-toggle-paper" data-id="${p.id}">
@@ -145,6 +156,7 @@ window.App = window.App || {};
     `;
 
     bindComposer(el);
+    bindFilter(el);
 
     // 恢复滚动位置：消息区元素是每次重绘新建的，scrollTop 天然为 0，
     // 若不还原，流式输出期间用户会看到内容「跳回顶部」。
@@ -611,6 +623,17 @@ window.App = window.App || {};
   /* ==========================================================================
      5. 交互
      ========================================================================== */
+  function bindFilter(el) {
+    const box = U.$('#qa-filter', el);
+    if (!box) return;
+    box.addEventListener('input', () => {
+      qaFilter = box.value;
+      App.render();
+      const again = U.$('#qa-filter');
+      if (again) { again.focus(); }
+    });
+  }
+
   function bindComposer(el) {
     const input = U.$('#qinput', el);
     if (!input) return;

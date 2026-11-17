@@ -139,6 +139,12 @@ window.App = window.App || {};
     U.delegate(document.body, 'click', '.drawer [data-action]', (e, el) => {
       handleAction(el.dataset.action, el.dataset, el);
     });
+    // 顶栏搜索框在 shellEls.topbar 上，此前的 input 委托只绑在 view 上，
+    // 所以输入没有任何反应。这里补一条：写 state.search 并切到文库页筛选。
+    U.delegate(shellEls.topbar, 'input', '[data-bind="search"]', (e, el) => {
+      App.store.set({ search: el.value }, 'search');
+      if (App.store.state.route !== 'library') App.store.actions.go('library');
+    });
     U.delegate(shellEls.view, 'input', '[data-bind]', (e, el) => {
       App.store.actions.setIdea ? null : null;
       if (el.dataset.bind === 'idea') App.store.actions.setIdea(el.value);

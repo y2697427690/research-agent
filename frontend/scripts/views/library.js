@@ -397,6 +397,11 @@ window.App = window.App || {};
     const box = U.$('#plist');
     if (!box) return;
     let list = App.store.state.papers.slice();
+    const kw = String(App.store.state.search || '').trim().toLowerCase();
+    if (kw) {
+      list = list.filter((p) => [p.title, p.fileName, p.authors]
+        .filter(Boolean).join(' ').toLowerCase().includes(kw));
+    }
     if (filter === 'low') list = list.filter((p) => (p.quality || 0) < 0.88);
     if (filter === 'scanned') list = list.filter((p) => p.scanned);
     if (filter === 'starred') list = list.filter((p) => p.starred);
