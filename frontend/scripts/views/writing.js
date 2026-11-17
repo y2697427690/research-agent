@@ -155,14 +155,6 @@ window.App = window.App || {};
       : (diagramKind === 'mermaid' ? p.mermaid : diagramKind === 'tikz' ? p.tikz : p.graphviz);
 
     body.innerHTML = h`
-      <div class="notice info mb-16">
-        <span>ℹ</span>
-        <div>
-          把论文的逻辑结构（研究问题 → 方法 → 实验 → 结论）转成可编译的绘图代码。
-          填写下方描述并点「用模型生成」，会调用真实模型输出对应格式的代码；不填时显示预置示例。
-        </div>
-      </div>
-
       <div class="row gap-8 mb-12">
         <input class="input" id="dgm-idea" placeholder="论文方法一句话，如：多模态检索 + 引用溯源的 RAG 流程" style="flex:1;min-width:0" />
         <button class="btn btn-primary" data-action="gen-diagram" data-format="${diagramKind}">
@@ -303,7 +295,7 @@ window.App = window.App || {};
           <div class="card-body tight">
             <table class="table">
               <thead><tr>${U.raw(table.head.map((th, i) =>
-                h`<th>${th}${table.numeric[i] ? ' <span class="muted tiny">#</span>' : ''}</th>`).join(''))}</tr></thead>
+                h`<th>${th}${table.numeric[i] ? U.raw(h` <span class="muted tiny">#</span>`) : ''}</th>`).join(''))}</tr></thead>
               <tbody>
                 ${U.raw(table.rows.map((r) => h`<tr>${U.raw(r.map((c, ci) => h`<td class="mono small ${table.numeric[ci] ? 'num' : ''}">${c}</td>`).join(''))}</tr>`).join(''))}
               </tbody>
@@ -394,15 +386,6 @@ window.App = window.App || {};
     const out = '';
 
     body.innerHTML = h`
-      <div class="notice info mb-16">
-        <span>ℹ</span>
-        <div>
-          用大模型（deepseek-chat）把中文摘要翻译成英文，术语按学术写法输出；
-          同一段文字重复翻译会直接命中服务端缓存，不再重复计费。
-          断网或未配置 API Key 时，自动退回本地术语表替换，并明确提示。
-        </div>
-      </div>
-
       <div class="grid grid-2">
         <div class="card">
           <div class="card-head">
@@ -416,9 +399,6 @@ window.App = window.App || {};
               <button class="btn btn-primary" data-action="translate-abstract">翻译为英文</button>
               <button class="btn btn-ghost" id="use-lib-abstract">重新载入文库摘要</button>
             </div>
-            <div class="muted tiny mt-8">
-              提交到 <code>POST /api/v1/translate</code>，由模型输出译文。
-            </div>
           </div>
         </div>
 
@@ -429,7 +409,7 @@ window.App = window.App || {};
             <span class="badge badge-brand" id="en-badge">待翻译</span>
           </div>
           <div class="card-body">
-            <div class="abstract-en" id="en-out" style="min-height:180px">${out || '（尚未翻译。点「翻译为英文」调用模型，译文会显示在这里）'}</div>
+            <div class="abstract-en" id="en-out" style="min-height:180px">${out || '未翻译'}</div>
             ${demo ? U.raw(h`
               <div class="muted tiny mt-12">参考：演示论文的原始英文摘要（可对比翻译质量）</div>
               <div class="caption-box mt-8">${demo.abstract}</div>`) : ''}
